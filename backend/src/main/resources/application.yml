@@ -1,0 +1,39 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: tutortime-backend
+  # Loads application-local.yml automatically if present (it's gitignored — see
+  # application-local.yml.example). Override with SPRING_PROFILES_ACTIVE in any real deployment.
+  profiles:
+    default: local
+  datasource:
+    url: jdbc:mysql://localhost:3306/tutortime?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+
+app:
+  jwt:
+    # Override via the JWT_SECRET env var in every real deployment — this default is dev-only.
+    secret: ${JWT_SECRET:dev-only-secret-change-me-before-shipping-anywhere-real-0123456789}
+    access-token-expiry-minutes: ${JWT_ACCESS_EXPIRY_MINUTES:15}
+    refresh-token-expiry-days: ${JWT_REFRESH_EXPIRY_DAYS:7}
+  email:
+    # Blank by default — EmailService just logs instead of sending until this is set.
+    resend-api-key: ${RESEND_API_KEY:}
+    from-address: ${EMAIL_FROM_ADDRESS:GoClass <onboarding@resend.dev>}
+  # Used to build the link inside password-reset emails.
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
