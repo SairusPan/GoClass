@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:tutortime-test;DB_CLOSE_DELAY=-1;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+app:
+  jwt:
+    secret: test-only-secret-not-for-anything-real-0123456789abcdef
+    access-token-expiry-minutes: 15
+    refresh-token-expiry-days: 7
+
+cors:
+  allowed-origins: http://localhost:5173

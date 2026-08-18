@@ -1,0 +1,11 @@
+# Copy this file to application-local.yml (same directory) and fill in your own values.
+# application-local.yml is gitignored — it is loaded automatically for local dev because
+# application.yml sets `spring.profiles.default: local`, so nothing else needs to change.
+spring:
+  datasource:
+    username: root
+    password: your-local-mysql-password
+
+app:
+  jwt:
+    secret: replace-with-a-random-32+-character-string-of-your-own
