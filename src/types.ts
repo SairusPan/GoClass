@@ -59,6 +59,21 @@ export interface ClassGroup {
   date: string | null // concrete calendar date for the current demo week, e.g. "2026-08-17"
 }
 
+/** A one-week exception to a class's normal recurring schedule — see ClassGroup. When one exists
+ * for a given (classId, weekStartDate), its fields are that week's real schedule, and the
+ * class's own template fields are left untouched. */
+export interface ClassOverride {
+  id: string
+  classId: string
+  weekStartDate: string
+  day: Day
+  start: string
+  durationMinutes: number
+  teacherId: string | null
+  roomId: string | null
+  status: ClassStatus
+}
+
 export interface LeaveRecord {
   id: string
   classId: string
