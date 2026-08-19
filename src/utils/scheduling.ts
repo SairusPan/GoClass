@@ -1,5 +1,5 @@
 import { DAYS, TIME_SLOTS, type ClassGroup, type Conflict, type Day, type Room, type Teacher } from '../types'
-import { WEEK_DATES } from '../data/mockData'
+import { getWeekDates } from '../data/mockData'
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number)
@@ -211,6 +211,7 @@ export function findRescheduleOptions(
     })
 
   const suitableRooms = rooms.filter((r) => r.capacity >= session.studentCount)
+  const weekDates = getWeekDates()
   const options: RescheduleOption[] = []
 
   for (const day of DAYS) {
@@ -221,7 +222,7 @@ export function findRescheduleOptions(
 
       for (const room of suitableRooms) {
         if (!isFree(bookingsByRoom.get(room.id), day, start, session.durationMinutes)) continue
-        options.push({ day, start, date: WEEK_DATES[day], roomId: room.id, score: 1 })
+        options.push({ day, start, date: weekDates[day], roomId: room.id, score: 1 })
       }
     }
   }

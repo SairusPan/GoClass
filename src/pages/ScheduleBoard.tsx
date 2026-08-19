@@ -3,12 +3,13 @@ import { useScheduling } from '../state/SchedulingContext'
 import { Badge, Button, Card } from '../components/ui'
 import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type ClassGroup, type Day } from '../types'
 import { addMinutesToTime, generateSuggestions, type Suggestion } from '../utils/scheduling'
-import { WEEK_DATES } from '../data/mockData'
+import { getWeekDates } from '../data/mockData'
 
 export default function ScheduleBoard() {
   const { classes, teachers, rooms, subjects, conflicts, assignClass, publishAllDrafts } = useScheduling()
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion[]>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
+  const weekDates = useMemo(() => getWeekDates(), [])
 
   const unscheduled = classes.filter((c) => c.status === 'unscheduled')
   const draftCount = classes.filter((c) => c.status === 'draft').length
@@ -160,7 +161,7 @@ export default function ScheduleBoard() {
               {DAYS.map((d) => (
                 <th key={d} className="text-left text-xs font-medium text-slate-500">
                   {DAY_LABELS[d]}
-                  <div className="font-normal text-slate-400">{WEEK_DATES[d]}</div>
+                  <div className="font-normal text-slate-400">{weekDates[d]}</div>
                 </th>
               ))}
             </tr>
