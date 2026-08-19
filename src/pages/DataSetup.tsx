@@ -43,6 +43,7 @@ export default function DataSetup() {
 function TeachersTab() {
   const { teachers, subjects, addTeacher } = useScheduling()
   const [showForm, setShowForm] = useState(false)
+  const [search, setSearch] = useState('')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -75,9 +76,23 @@ function TeachersTab() {
     resetForm()
   }
 
+  const query = search.trim().toLowerCase()
+  const filteredTeachers = teachers.filter(
+    (t) =>
+      !query ||
+      t.name.toLowerCase().includes(query) ||
+      t.subjects.some((sid) => (subjects.find((s) => s.id === sid)?.name ?? '').toLowerCase().includes(query)),
+  )
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or subject…"
+          className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
         <Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : '+ Add teacher'}</Button>
       </div>
 
@@ -204,7 +219,7 @@ function TeachersTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {teachers.map((t) => (
+            {filteredTeachers.map((t) => (
               <tr key={t.id}>
                 <td className="px-4 py-3 font-medium text-slate-800">{t.name}</td>
                 <td className="px-4 py-3">
@@ -231,6 +246,9 @@ function TeachersTab() {
             ))}
           </tbody>
         </table>
+        {filteredTeachers.length === 0 && query && (
+          <p className="px-4 py-6 text-center text-sm text-slate-400">No teachers match "{search}".</p>
+        )}
       </Card>
     </div>
   )
@@ -337,10 +355,16 @@ function ClassesTab() {
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [studentCount, setStudentCount] = useState(6)
   const [durationMinutes, setDurationMinutes] = useState(60)
+  const [search, setSearch] = useState('')
 
   function subjectName(id: string) {
     return subjects.find((s) => s.id === id)?.name ?? id
   }
+
+  const query = search.trim().toLowerCase()
+  const filteredClasses = classes.filter(
+    (c) => !query || c.name.toLowerCase().includes(query) || subjectName(c.subjectId).toLowerCase().includes(query),
+  )
 
   return (
     <div className="space-y-4">
@@ -404,6 +428,13 @@ function ClassesTab() {
         <p className="text-sm text-slate-500">Add a subject first (Subjects tab) before creating classes.</p>
       )}
 
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by name or subject…"
+        className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+      />
+
       <Card className="overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -416,7 +447,7 @@ function ClassesTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {classes.map((c) => (
+            {filteredClasses.map((c) => (
               <tr key={c.id}>
                 <td className="px-4 py-3 font-medium text-slate-800">{c.name}</td>
                 <td className="px-4 py-3 text-slate-600">{subjectName(c.subjectId)}</td>
@@ -431,6 +462,9 @@ function ClassesTab() {
             ))}
           </tbody>
         </table>
+        {filteredClasses.length === 0 && query && (
+          <p className="px-4 py-6 text-center text-sm text-slate-400">No classes match "{search}".</p>
+        )}
       </Card>
     </div>
   )
