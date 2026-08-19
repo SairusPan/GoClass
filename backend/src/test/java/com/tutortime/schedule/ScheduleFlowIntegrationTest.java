@@ -38,7 +38,7 @@ class ScheduleFlowIntegrationTest {
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"%s Tutoring","adminName":"Admin %s","username":"%s","email":"%s@example.com","password":"secret123"}
+                                {"name":"%s Tutoring","adminName":"Admin %s","username":"%s","email":"%s@example.com","password":"secret123","seedDemoData":true}
                                 """.formatted(username, username, username, username)))
                 .andExpect(status().isCreated())
                 .andReturn();

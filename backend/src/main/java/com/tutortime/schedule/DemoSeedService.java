@@ -8,10 +8,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Populates a freshly-registered institution with the same demo dataset the frontend used to
- * ship as static mock data — six teachers, six subjects, four rooms, ten classes, including one
- * deliberate double-booking (Thu 17:00, same teacher + room) — so every new tenant starts from a
- * working, demonstrable timetable instead of an empty one.
+ * Populates an institution with the same demo dataset the frontend used to ship as static mock
+ * data — six teachers, six subjects, four rooms, ten classes, including one deliberate
+ * double-booking (Thu 17:00, same teacher + room). Only run for the one-click demo login
+ * (RegisterRequest.seedDemoData) — real tenants register with an empty account.
  */
 @Service
 public class DemoSeedService {
