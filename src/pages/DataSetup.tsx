@@ -350,7 +350,7 @@ function RoomsTab() {
 }
 
 function ClassesTab() {
-  const { classes, subjects, addClass } = useScheduling()
+  const { classes, subjects, addClass, deleteClass } = useScheduling()
   const [name, setName] = useState('')
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [studentCount, setStudentCount] = useState(6)
@@ -444,6 +444,7 @@ function ClassesTab() {
               <th className="px-4 py-3">Students</th>
               <th className="px-4 py-3">Duration</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -457,6 +458,16 @@ function ClassesTab() {
                   <Badge tone={c.status === 'published' ? 'green' : c.status === 'draft' ? 'amber' : 'slate'}>
                     {c.status}
                   </Badge>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${c.name}"? This can't be undone.`)) deleteClass(c.id)
+                    }}
+                    className="text-xs font-medium text-red-500 hover:text-red-700"
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}

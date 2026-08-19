@@ -118,6 +118,11 @@ public class ClassService {
         emailService.send(teacher.getEmail(), "You're scheduled for a class — GoClass", message);
     }
 
+    @Transactional
+    public void delete(Long institutionId, Long classId) {
+        repository.delete(find(institutionId, classId));
+    }
+
     private static String addMinutes(String hhmm, int minutes) {
         return java.time.LocalTime.parse(hhmm).plusMinutes(minutes).toString();
     }
