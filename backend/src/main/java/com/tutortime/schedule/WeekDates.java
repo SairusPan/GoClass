@@ -15,7 +15,8 @@ final class WeekDates {
             "Wed", LocalDate.of(2026, 8, 19),
             "Thu", LocalDate.of(2026, 8, 20),
             "Fri", LocalDate.of(2026, 8, 21),
-            "Sat", LocalDate.of(2026, 8, 22));
+            "Sat", LocalDate.of(2026, 8, 22),
+            "Sun", LocalDate.of(2026, 8, 23));
 
     static LocalDate forDay(String day) {
         return DATES.get(day);

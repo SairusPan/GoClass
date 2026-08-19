@@ -1,6 +1,6 @@
-export type Day = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat'
+export type Day = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
 
-export const DAYS: Day[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+export const DAYS: Day[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export const DAY_LABELS: Record<Day, string> = {
   Mon: 'Monday',
@@ -9,6 +9,7 @@ export const DAY_LABELS: Record<Day, string> = {
   Thu: 'Thursday',
   Fri: 'Friday',
   Sat: 'Saturday',
+  Sun: 'Sunday',
 }
 
 // Fixed grid of lesson start times
