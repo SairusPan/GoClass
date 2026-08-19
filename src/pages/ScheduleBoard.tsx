@@ -9,7 +9,11 @@ export default function ScheduleBoard() {
   const { classes, teachers, rooms, subjects, conflicts, assignClass, publishAllDrafts } = useScheduling()
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion[]>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
-  const weekDates = useMemo(() => getWeekDates(), [])
+  const [weekOffset, setWeekOffset] = useState(0)
+  const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
+  const currentYear = new Date().getFullYear()
+  const canGoBack = new Date(getWeekDates(weekOffset - 1).Mon).getFullYear() >= currentYear
+  const canGoForward = new Date(getWeekDates(weekOffset + 1).Mon).getFullYear() <= currentYear
 
   const unscheduled = classes.filter((c) => c.status === 'unscheduled')
   const draftCount = classes.filter((c) => c.status === 'draft').length
@@ -153,7 +157,22 @@ export default function ScheduleBoard() {
       )}
 
       <Card className="overflow-x-auto p-5">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Weekly timetable</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-900">Weekly timetable</h2>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setWeekOffset((w) => w - 1)} disabled={!canGoBack}>
+              ← Previous week
+            </Button>
+            {weekOffset !== 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setWeekOffset(0)}>
+                This week
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" onClick={() => setWeekOffset((w) => w + 1)} disabled={!canGoForward}>
+              Next week →
+            </Button>
+          </div>
+        </div>
         <table className="w-full min-w-[720px] table-fixed border-separate border-spacing-1 text-sm">
           <thead>
             <tr>
