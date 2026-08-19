@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Availability, ClassGroup, Day, LeaveRecord, NotificationItem, Room, Subject, Teacher } from '../types'
 import { findConflicts } from '../utils/scheduling'
-import { apiFetchJson } from './apiClient'
+import { apiFetch, apiFetchJson, readError } from './apiClient'
 
 interface SchedulingState {
   classes: ClassGroup[]
@@ -23,6 +23,7 @@ interface SchedulingState {
   addSubject: (name: string) => Promise<void>
   addRoom: (name: string, capacity: number) => Promise<void>
   addClass: (c: { name: string; subjectId: string; studentCount: number; durationMinutes: number }) => Promise<void>
+  deleteClass: (classId: string) => Promise<void>
 }
 
 const SchedulingContext = createContext<SchedulingState | null>(null)
@@ -269,6 +270,12 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     setClasses((prev) => [...prev, mapClass(created)])
   }
 
+  async function deleteClass(classId: string) {
+    const res = await apiFetch(`/api/classes/${classId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(await readError(res, 'Could not delete this class.'))
+    setClasses((prev) => prev.filter((c) => c.id !== classId))
+  }
+
   const value: SchedulingState = {
     classes,
     teachers,
@@ -288,6 +295,7 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     addSubject,
     addRoom,
     addClass,
+    deleteClass,
   }
 
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>

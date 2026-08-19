@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,5 +49,11 @@ public class ClassController {
     @PostMapping("/publish-drafts")
     public List<ClassResponse> publishAllDrafts(HttpServletRequest request) {
         return service.publishAllDrafts(CurrentInstitution.id(request));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(HttpServletRequest request, @PathVariable Long id) {
+        service.delete(CurrentInstitution.id(request), id);
+        return ResponseEntity.noContent().build();
     }
 }
