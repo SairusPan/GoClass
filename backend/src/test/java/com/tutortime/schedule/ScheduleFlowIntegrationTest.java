@@ -144,6 +144,38 @@ class ScheduleFlowIntegrationTest {
     }
 
     @Test
+    void publishingAScheduledClassQueuesATeacherNotificationButDraftAssignmentDoesNot() throws Exception {
+        String token = registerAndGetAccessToken("publishnotify");
+
+        JsonNode classes = listAsJson("/api/classes", token);
+        JsonNode teachers = listAsJson("/api/teachers", token);
+        JsonNode rooms = listAsJson("/api/rooms", token);
+        JsonNode unscheduled = findFirst(classes, c -> "unscheduled".equals(c.get("status").asText()));
+        long classId = unscheduled.get("id").asLong();
+        long teacherId = teachers.get(0).get("id").asLong();
+        long roomId = rooms.get(0).get("id").asLong();
+
+        // Draft assignment alone must not notify — an admin may reassign several times while drafting.
+        mockMvc.perform(patch("/api/classes/" + classId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"teacherId\":%d,\"roomId\":%d,\"day\":\"Mon\",\"start\":\"09:00\"}".formatted(teacherId, roomId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("draft"));
+
+        assertThat(listAsJson("/api/notifications", token).size()).isEqualTo(0);
+
+        // Publishing is the confirmed, final step — that's what should notify the teacher.
+        mockMvc.perform(post("/api/classes/" + classId + "/publish").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("published"));
+
+        JsonNode notifications = listAsJson("/api/notifications", token);
+        assertThat(notifications.size()).isEqualTo(1);
+        assertThat(notifications.get(0).get("audience").asText()).isEqualTo("teacher");
+    }
+
+    @Test
     void fileLeaveAndResolveWithSubstituteUpdatesTheClassAndQueuesNotifications() throws Exception {
         String token = registerAndGetAccessToken("leavecheck");
 
