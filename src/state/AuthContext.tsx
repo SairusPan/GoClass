@@ -11,7 +11,14 @@ type AuthResult = { ok: true } | { ok: false; error: string }
 interface AuthState {
   currentUser: Institution | null
   isLoading: boolean
-  signUp: (data: { name: string; adminName: string; username: string; email: string; password: string }) => Promise<AuthResult>
+  signUp: (data: {
+    name: string
+    adminName: string
+    username: string
+    email: string
+    password: string
+    seedDemoData?: boolean
+  }) => Promise<AuthResult>
   logIn: (username: string, password: string) => Promise<AuthResult>
   logOut: () => Promise<void>
   logInAsDemo: () => Promise<AuthResult>
@@ -65,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string
     email: string
     password: string
+    seedDemoData?: boolean
   }): Promise<AuthResult> {
     try {
       const res = await fetch(`${API_BASE}/api/auth/register`, {
@@ -120,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       username: DEMO_USERNAME,
       email: DEMO_EMAIL,
       password: DEMO_PASSWORD,
+      seedDemoData: true,
     })
   }
 

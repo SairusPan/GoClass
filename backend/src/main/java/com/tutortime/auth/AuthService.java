@@ -59,7 +59,9 @@ public class AuthService {
         institution.setEmail(request.email().trim().toLowerCase());
         institution = repository.save(institution);
 
-        demoSeedService.seed(institution.getId());
+        if (Boolean.TRUE.equals(request.seedDemoData())) {
+            demoSeedService.seed(institution.getId());
+        }
 
         return issueTokens(institution);
     }
