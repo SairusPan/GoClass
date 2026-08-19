@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ClassGroup, Room, Teacher } from '../types'
-import { findConflicts, findRescheduleOptions, findSubstitutes, generateSuggestions } from './scheduling'
+import type { ClassGroup, ClassOverride, Room, Teacher } from '../types'
+import { applyWeekOverrides, findConflicts, findRescheduleOptions, findSubstitutes, generateSuggestions } from './scheduling'
 
 function teacher(overrides: Partial<Teacher> & { id: string }): Teacher {
   return {
@@ -32,6 +32,53 @@ function cls(overrides: Partial<ClassGroup> & { id: string }): ClassGroup {
     ...overrides,
   }
 }
+
+function override(overrides: Partial<ClassOverride> & { classId: string }): ClassOverride {
+  return {
+    id: `ov-${overrides.classId}`,
+    weekStartDate: '2026-08-17',
+    day: 'Wed',
+    start: '11:00',
+    durationMinutes: 60,
+    teacherId: null,
+    roomId: null,
+    status: 'draft',
+    ...overrides,
+  }
+}
+
+describe('applyWeekOverrides', () => {
+  it('leaves classes with no override for that week untouched', () => {
+    const classes = [cls({ id: 'a', day: 'Mon', start: '16:00' })]
+    expect(applyWeekOverrides(classes, [])).toEqual(classes)
+  })
+
+  it('swaps in the override fields for the matching class, keeping everything else the same', () => {
+    const classes = [cls({ id: 'a', name: 'Biology', day: 'Mon', start: '16:00', teacherId: 't1', roomId: 'r1' })]
+    const overrides = [override({ classId: 'a', day: 'Wed', start: '11:00', teacherId: 't2', roomId: 'r2', status: 'published' })]
+    const [effective] = applyWeekOverrides(classes, overrides)
+    expect(effective.name).toBe('Biology') // unrelated fields still come from the template
+    expect(effective.day).toBe('Wed')
+    expect(effective.start).toBe('11:00')
+    expect(effective.teacherId).toBe('t2')
+    expect(effective.roomId).toBe('r2')
+    expect(effective.status).toBe('published')
+  })
+
+  it('does not mutate the original class objects', () => {
+    const classes = [cls({ id: 'a', day: 'Mon', start: '16:00' })]
+    applyWeekOverrides(classes, [override({ classId: 'a', day: 'Wed', start: '11:00' })])
+    expect(classes[0].day).toBe('Mon')
+    expect(classes[0].start).toBe('16:00')
+  })
+
+  it('only affects the class the override belongs to', () => {
+    const classes = [cls({ id: 'a', day: 'Mon' }), cls({ id: 'b', day: 'Tue' })]
+    const [a, b] = applyWeekOverrides(classes, [override({ classId: 'a', day: 'Fri' })])
+    expect(a.day).toBe('Fri')
+    expect(b.day).toBe('Tue')
+  })
+})
 
 describe('findConflicts', () => {
   it('reports nothing when classes sit at different times', () => {

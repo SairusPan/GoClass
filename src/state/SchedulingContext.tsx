@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Availability, ClassGroup, Day, LeaveRecord, NotificationItem, Room, Subject, Teacher } from '../types'
+import type { Availability, ClassGroup, ClassOverride, ClassStatus, Day, LeaveRecord, NotificationItem, Room, Subject, Teacher } from '../types'
 import { findConflicts } from '../utils/scheduling'
 import { apiFetch, apiFetchJson, readError } from './apiClient'
 
@@ -24,6 +24,13 @@ interface SchedulingState {
   addRoom: (name: string, capacity: number) => Promise<void>
   addClass: (c: { name: string; subjectId: string; studentCount: number; durationMinutes: number }) => Promise<void>
   deleteClass: (classId: string) => Promise<void>
+  fetchWeekOverrides: (weekStartDate: string) => Promise<ClassOverride[]>
+  saveWeekOverride: (
+    classId: string,
+    weekStartDate: string,
+    patch: { teacherId: string | null; roomId: string | null; day: Day; start: string; durationMinutes: number; status: ClassStatus },
+  ) => Promise<ClassOverride>
+  clearWeekOverride: (classId: string, weekStartDate: string) => Promise<void>
 }
 
 const SchedulingContext = createContext<SchedulingState | null>(null)
@@ -110,6 +117,30 @@ function mapClass(c: BackendClass): ClassGroup {
     teacherId: c.teacherId == null ? null : String(c.teacherId),
     roomId: c.roomId == null ? null : String(c.roomId),
     date: c.date,
+  }
+}
+interface BackendClassOverride {
+  id: number
+  classId: number
+  weekStartDate: string
+  day: Day
+  start: string
+  durationMinutes: number
+  teacherId: number | null
+  roomId: number | null
+  status: ClassStatus
+}
+function mapClassOverride(o: BackendClassOverride): ClassOverride {
+  return {
+    id: String(o.id),
+    classId: String(o.classId),
+    weekStartDate: o.weekStartDate,
+    day: o.day,
+    start: o.start,
+    durationMinutes: o.durationMinutes,
+    teacherId: o.teacherId == null ? null : String(o.teacherId),
+    roomId: o.roomId == null ? null : String(o.roomId),
+    status: o.status,
   }
 }
 function mapLeave(r: BackendLeave): LeaveRecord {
@@ -276,6 +307,35 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     setClasses((prev) => prev.filter((c) => c.id !== classId))
   }
 
+  async function fetchWeekOverrides(weekStartDate: string): Promise<ClassOverride[]> {
+    const list = await apiFetchJson<BackendClassOverride[]>(`/api/class-overrides?week=${weekStartDate}`)
+    return list.map(mapClassOverride)
+  }
+
+  async function saveWeekOverride(
+    classId: string,
+    weekStartDate: string,
+    patch: { teacherId: string | null; roomId: string | null; day: Day; start: string; durationMinutes: number; status: ClassStatus },
+  ): Promise<ClassOverride> {
+    const saved = await apiFetchJson<BackendClassOverride>(`/api/classes/${classId}/override?week=${weekStartDate}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        teacherId: patch.teacherId == null ? null : Number(patch.teacherId),
+        roomId: patch.roomId == null ? null : Number(patch.roomId),
+        day: patch.day,
+        start: patch.start,
+        durationMinutes: patch.durationMinutes,
+        status: patch.status,
+      }),
+    })
+    return mapClassOverride(saved)
+  }
+
+  async function clearWeekOverride(classId: string, weekStartDate: string) {
+    const res = await apiFetch(`/api/classes/${classId}/override?week=${weekStartDate}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(await readError(res, 'Could not revert this week.'))
+  }
+
   const value: SchedulingState = {
     classes,
     teachers,
@@ -296,6 +356,9 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     addRoom,
     addClass,
     deleteClass,
+    fetchWeekOverrides,
+    saveWeekOverride,
+    clearWeekOverride,
   }
 
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>

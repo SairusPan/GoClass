@@ -1,24 +1,45 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useScheduling } from '../state/SchedulingContext'
 import { Badge, Button, Card } from '../components/ui'
-import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type ClassGroup, type Day } from '../types'
-import { addMinutesToTime, generateSuggestions, type Suggestion } from '../utils/scheduling'
+import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type ClassGroup, type ClassOverride, type Day } from '../types'
+import { addMinutesToTime, applyWeekOverrides, findConflicts, generateSuggestions, type Suggestion } from '../utils/scheduling'
 import { getWeekDates } from '../data/mockData'
 
 export default function ScheduleBoard() {
-  const { classes, teachers, rooms, subjects, conflicts, assignClass, publishAllDrafts } = useScheduling()
+  const { classes, teachers, rooms, subjects, assignClass, publishAllDrafts, fetchWeekOverrides } = useScheduling()
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion[]>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
   const [weekOffset, setWeekOffset] = useState(0)
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
+  const weekStart = weekDates.Mon
   const currentYear = new Date().getFullYear()
   const canGoBack = new Date(getWeekDates(weekOffset - 1).Mon).getFullYear() >= currentYear
   const canGoForward = new Date(getWeekDates(weekOffset + 1).Mon).getFullYear() <= currentYear
 
-  const unscheduled = classes.filter((c) => c.status === 'unscheduled')
+  const [overrides, setOverrides] = useState<ClassOverride[]>([])
+  const refreshOverrides = useCallback(() => {
+    fetchWeekOverrides(weekStart).then(setOverrides)
+  }, [fetchWeekOverrides, weekStart])
+  useEffect(() => {
+    refreshOverrides()
+  }, [refreshOverrides])
+
+  // This week's real schedule — templates with any per-week overrides merged in. All rendering
+  // and conflict-checking below uses this, not the raw templates, so a one-off change made to
+  // this week is reflected here without touching other weeks.
+  const effectiveClasses = useMemo(() => applyWeekOverrides(classes, overrides), [classes, overrides])
+  const weekConflicts = useMemo(() => findConflicts(effectiveClasses), [effectiveClasses])
+
+  const unscheduled = effectiveClasses.filter((c) => c.status === 'unscheduled')
+  // Deliberately the template's draft count, not this week's — "Publish all drafts" bulk-publishes
+  // template-level drafts (the normal add-a-class → suggest → apply → publish flow); it doesn't
+  // know about per-week overrides, which are published individually from the edit panel instead.
   const draftCount = classes.filter((c) => c.status === 'draft').length
 
-  const conflictClassIds = useMemo(() => new Set(conflicts.map((c) => c.classId).concat(conflicts.map((c) => c.withClassId))), [conflicts])
+  const conflictClassIds = useMemo(
+    () => new Set(weekConflicts.map((c) => c.classId).concat(weekConflicts.map((c) => c.withClassId))),
+    [weekConflicts],
+  )
 
   function subjectName(id: string) {
     return subjects.find((s) => s.id === id)?.name ?? id
@@ -33,7 +54,7 @@ export default function ScheduleBoard() {
   function runSuggestions() {
     const next: Record<string, Suggestion[]> = {}
     for (const cls of unscheduled) {
-      next[cls.id] = generateSuggestions(cls, classes, teachers, rooms)
+      next[cls.id] = generateSuggestions(cls, effectiveClasses, teachers, rooms)
     }
     setSuggestions(next)
   }
@@ -53,7 +74,8 @@ export default function ScheduleBoard() {
     setSuggestions({})
   }
 
-  const editingClass = classes.find((c) => c.id === editingId) ?? null
+  const editingClass = effectiveClasses.find((c) => c.id === editingId) ?? null
+  const editingHasOverride = editingId != null && overrides.some((o) => o.classId === editingId)
 
   return (
     <div className="space-y-8">
@@ -79,14 +101,14 @@ export default function ScheduleBoard() {
         </div>
       </div>
 
-      {conflicts.length > 0 && (
+      {weekConflicts.length > 0 && (
         <Card className="border-red-200 bg-red-50 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
-            <Badge tone="red">{conflicts.length}</Badge>
-            Conflicts detected — resolve before publishing
+            <Badge tone="red">{weekConflicts.length}</Badge>
+            Conflicts detected this week — resolve before publishing
           </div>
           <ul className="mt-2 space-y-1 text-sm text-red-700">
-            {conflicts.map((c, i) => (
+            {weekConflicts.map((c, i) => (
               <li key={i}>• {c.message}</li>
             ))}
           </ul>
@@ -190,7 +212,7 @@ export default function ScheduleBoard() {
               <tr key={slot}>
                 <td className="align-top text-xs font-medium text-slate-400">{slot}</td>
                 {DAYS.map((day) => {
-                  const cellClasses = classes.filter(
+                  const cellClasses = effectiveClasses.filter(
                     (c) => c.status !== 'unscheduled' && c.day === day && c.start === slot,
                   )
                   return (
@@ -198,6 +220,7 @@ export default function ScheduleBoard() {
                       <div className="min-h-16 space-y-1">
                         {cellClasses.map((cls) => {
                           const hasConflict = conflictClassIds.has(cls.id)
+                          const hasOverride = overrides.some((o) => o.classId === cls.id)
                           return (
                             <button
                               key={cls.id}
@@ -210,7 +233,10 @@ export default function ScheduleBoard() {
                                     : 'border-amber-200 bg-amber-50'
                               }`}
                             >
-                              <div className="font-medium text-slate-800">{cls.name}</div>
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="font-medium text-slate-800">{cls.name}</div>
+                                {hasOverride && <Badge tone="blue">This week</Badge>}
+                              </div>
                               <div className="text-slate-500">{teacherName(cls.teacherId)}</div>
                               <div className="text-slate-400">{roomName(cls.roomId)}</div>
                               <div className="text-slate-400">
@@ -229,27 +255,70 @@ export default function ScheduleBoard() {
         </table>
       </Card>
 
-      {editingClass && <EditPanel cls={editingClass} onClose={() => setEditingId(null)} />}
+      {editingClass && (
+        <EditPanel
+          cls={editingClass}
+          templateStatus={classes.find((c) => c.id === editingId)?.status ?? 'unscheduled'}
+          weekStart={weekStart}
+          weekLabel={weekDates[editingClass.day ?? 'Mon']}
+          hasOverride={editingHasOverride}
+          onClose={() => setEditingId(null)}
+          onSaved={refreshOverrides}
+        />
+      )}
     </div>
   )
 }
 
-function EditPanel({ cls, onClose }: { cls: ClassGroup; onClose: () => void }) {
-  const { teachers, rooms, assignClass, publishClass } = useScheduling()
+function EditPanel({
+  cls,
+  templateStatus,
+  weekStart,
+  weekLabel,
+  hasOverride,
+  onClose,
+  onSaved,
+}: {
+  cls: ClassGroup
+  templateStatus: ClassGroup['status']
+  weekStart: string
+  weekLabel: string
+  hasOverride: boolean
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { teachers, rooms, assignClass, publishClass, saveWeekOverride, clearWeekOverride } = useScheduling()
   const [teacherId, setTeacherId] = useState(cls.teacherId ?? teachers[0]?.id ?? '')
   const [roomId, setRoomId] = useState(cls.roomId ?? rooms[0]?.id ?? '')
   const [day, setDay] = useState<Day>(cls.day ?? 'Mon')
   const [start, setStart] = useState(cls.start ?? TIME_SLOTS[0])
   const [durationMinutes, setDurationMinutes] = useState(cls.durationMinutes)
+  const [scope, setScope] = useState<'all' | 'week'>('all')
 
   function save() {
-    assignClass(cls.id, { teacherId, roomId, day, start, durationMinutes })
+    if (scope === 'week') {
+      saveWeekOverride(cls.id, weekStart, { teacherId, roomId, day, start, durationMinutes, status: 'draft' }).then(onSaved)
+    } else {
+      assignClass(cls.id, { teacherId, roomId, day, start, durationMinutes })
+    }
     onClose()
   }
 
-  function saveAndPublish() {
-    assignClass(cls.id, { teacherId, roomId, day, start, durationMinutes })
-    publishClass(cls.id)
+  async function saveAndPublish() {
+    if (scope === 'week') {
+      saveWeekOverride(cls.id, weekStart, { teacherId, roomId, day, start, durationMinutes, status: 'published' }).then(onSaved)
+    } else {
+      // publishClass() must run after assignClass() has actually committed, or it can race: if
+      // assignClass's own status-defaulting write (unscheduled -> draft) lands after publish's,
+      // the class ends up stuck on "draft" instead of "published".
+      await assignClass(cls.id, { teacherId, roomId, day, start, durationMinutes })
+      publishClass(cls.id)
+    }
+    onClose()
+  }
+
+  function revertToUsualSchedule() {
+    clearWeekOverride(cls.id, weekStart).then(onSaved)
     onClose()
   }
 
@@ -260,6 +329,30 @@ function EditPanel({ cls, onClose }: { cls: ClassGroup; onClose: () => void }) {
           <h3 className="text-base font-semibold text-slate-900">Edit {cls.name}</h3>
           <Badge tone={cls.status === 'published' ? 'green' : 'amber'}>{cls.status}</Badge>
         </div>
+
+        <div className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+          <button
+            onClick={() => setScope('all')}
+            className={`flex-1 rounded-md py-1.5 font-medium transition-colors ${
+              scope === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+            }`}
+          >
+            Every week
+          </button>
+          <button
+            onClick={() => setScope('week')}
+            className={`flex-1 rounded-md py-1.5 font-medium transition-colors ${
+              scope === 'week' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+            }`}
+          >
+            This week only ({weekLabel})
+          </button>
+        </div>
+        {scope === 'week' && (
+          <p className="mt-2 text-xs text-slate-400">
+            Only changes the week you're viewing — every other week keeps its usual schedule.
+          </p>
+        )}
 
         <div className="mt-4 space-y-3">
           <label className="block text-sm">
@@ -344,15 +437,26 @@ function EditPanel({ cls, onClose }: { cls: ClassGroup; onClose: () => void }) {
           see the clash instead of being blocked outright.
         </p>
 
-        <div className="mt-5 flex justify-between">
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
+        <div className="mt-5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            {scope === 'week' && hasOverride && (
+              <button onClick={revertToUsualSchedule} className="text-xs font-medium text-red-500 hover:text-red-700">
+                Revert to usual schedule
+              </button>
+            )}
+          </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={save}>
               Save changes
             </Button>
-            {cls.status !== 'published' && <Button onClick={saveAndPublish}>Save &amp; publish</Button>}
+            {/* A brand-new override always starts unpublished regardless of the template's
+             * status — only treat "published" as final once this scope actually has that status. */}
+            {(scope === 'week' ? !hasOverride || cls.status !== 'published' : templateStatus !== 'published') && (
+              <Button onClick={saveAndPublish}>Save &amp; publish</Button>
+            )}
           </div>
         </div>
       </div>

@@ -12,6 +12,7 @@ import java.util.List;
 public class ClassService {
 
     private final ClassSessionRepository repository;
+    private final ClassOverrideRepository overrideRepository;
     private final TeacherRepository teacherRepository;
     private final RoomRepository roomRepository;
     private final NotificationRepository notificationRepository;
@@ -19,11 +20,13 @@ public class ClassService {
 
     public ClassService(
             ClassSessionRepository repository,
+            ClassOverrideRepository overrideRepository,
             TeacherRepository teacherRepository,
             RoomRepository roomRepository,
             NotificationRepository notificationRepository,
             EmailService emailService) {
         this.repository = repository;
+        this.overrideRepository = overrideRepository;
         this.teacherRepository = teacherRepository;
         this.roomRepository = roomRepository;
         this.notificationRepository = notificationRepository;
@@ -120,7 +123,9 @@ public class ClassService {
 
     @Transactional
     public void delete(Long institutionId, Long classId) {
-        repository.delete(find(institutionId, classId));
+        ClassSession session = find(institutionId, classId);
+        overrideRepository.deleteByClassSessionId(session.getId());
+        repository.delete(session);
     }
 
     private static String addMinutes(String hhmm, int minutes) {

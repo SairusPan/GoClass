@@ -12,9 +12,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -251,6 +253,93 @@ class ScheduleFlowIntegrationTest {
         // file() queues 1 ("finding cover"), resolveWithSubstitute() queues 2 more (teacher + parent) = 3
         JsonNode notifications = listAsJson("/api/notifications", token);
         assertThat(notifications.size()).isEqualTo(3);
+    }
+
+    @Test
+    void overridingAClassForOneWeekDoesNotChangeTheTemplateOrOtherWeeks() throws Exception {
+        String token = registerAndGetAccessToken("overridecheck");
+        JsonNode classes = listAsJson("/api/classes", token);
+        JsonNode teachers = listAsJson("/api/teachers", token);
+        JsonNode rooms = listAsJson("/api/rooms", token);
+        long classId = findFirst(classes, c -> "published".equals(c.get("status").asText())).get("id").asLong();
+        long altTeacherId = teachers.get(1).get("id").asLong();
+        long altRoomId = rooms.get(1).get("id").asLong();
+
+        String thisWeek = "2026-08-17";
+        String otherWeek = "2026-08-24";
+
+        mockMvc.perform(put("/api/classes/" + classId + "/override")
+                        .param("week", thisWeek)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"teacherId":%d,"roomId":%d,"day":"Wed","start":"11:00","durationMinutes":90,"status":"published"}
+                                """.formatted(altTeacherId, altRoomId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.day").value("Wed"))
+                .andExpect(jsonPath("$.start").value("11:00"))
+                .andExpect(jsonPath("$.teacherId").value(altTeacherId));
+
+        // the template itself must be untouched
+        JsonNode templateAfter = findFirst(listAsJson("/api/classes", token), c -> c.get("id").asLong() == classId);
+        JsonNode original = findFirst(classes, c -> c.get("id").asLong() == classId);
+        assertThat(templateAfter.get("day").asText()).isEqualTo(original.get("day").asText());
+        assertThat(templateAfter.get("start").asText()).isEqualTo(original.get("start").asText());
+
+        // the override only shows up for the week it was made for
+        JsonNode overridesThisWeek = listAsJson("/api/class-overrides?week=" + thisWeek, token);
+        assertThat(overridesThisWeek.size()).isEqualTo(1);
+        JsonNode overridesOtherWeek = listAsJson("/api/class-overrides?week=" + otherWeek, token);
+        assertThat(overridesOtherWeek.size()).isEqualTo(0);
+    }
+
+    @Test
+    void deletingAWeekOverrideRevertsToTheTemplate() throws Exception {
+        String token = registerAndGetAccessToken("overridedelete");
+        JsonNode classes = listAsJson("/api/classes", token);
+        JsonNode teachers = listAsJson("/api/teachers", token);
+        JsonNode rooms = listAsJson("/api/rooms", token);
+        long classId = findFirst(classes, c -> "published".equals(c.get("status").asText())).get("id").asLong();
+        String week = "2026-08-17";
+
+        mockMvc.perform(put("/api/classes/" + classId + "/override")
+                        .param("week", week)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"teacherId":%d,"roomId":%d,"day":"Fri","start":"14:00","durationMinutes":60,"status":"draft"}
+                                """.formatted(teachers.get(1).get("id").asLong(), rooms.get(1).get("id").asLong())))
+                .andExpect(status().isOk());
+        assertThat(listAsJson("/api/class-overrides?week=" + week, token).size()).isEqualTo(1);
+
+        mockMvc.perform(delete("/api/classes/" + classId + "/override").param("week", week)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        assertThat(listAsJson("/api/class-overrides?week=" + week, token).size()).isEqualTo(0);
+    }
+
+    @Test
+    void deletingAClassCascadesToItsOverrides() throws Exception {
+        String token = registerAndGetAccessToken("overridecascade");
+        JsonNode classes = listAsJson("/api/classes", token);
+        JsonNode teachers = listAsJson("/api/teachers", token);
+        JsonNode rooms = listAsJson("/api/rooms", token);
+        long classId = findFirst(classes, c -> "published".equals(c.get("status").asText())).get("id").asLong();
+        String week = "2026-08-17";
+
+        mockMvc.perform(put("/api/classes/" + classId + "/override")
+                        .param("week", week)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"teacherId":%d,"roomId":%d,"day":"Fri","start":"14:00","durationMinutes":60,"status":"draft"}
+                                """.formatted(teachers.get(1).get("id").asLong(), rooms.get(1).get("id").asLong())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/classes/" + classId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        assertThat(listAsJson("/api/class-overrides?week=" + week, token).size()).isEqualTo(0);
     }
 
     @Test

@@ -1,5 +1,24 @@
-import { DAYS, TIME_SLOTS, type ClassGroup, type Conflict, type Day, type Room, type Teacher } from '../types'
+import { DAYS, TIME_SLOTS, type ClassGroup, type ClassOverride, type Conflict, type Day, type Room, type Teacher } from '../types'
 import { getWeekDates } from '../data/mockData'
+
+/** Merges a week's overrides into the class templates, producing each class's *effective*
+ * schedule for that specific week — the templates themselves are never mutated. */
+export function applyWeekOverrides(classes: ClassGroup[], overrides: ClassOverride[]): ClassGroup[] {
+  const overrideByClassId = new Map(overrides.map((o) => [o.classId, o]))
+  return classes.map((c) => {
+    const o = overrideByClassId.get(c.id)
+    if (!o) return c
+    return {
+      ...c,
+      day: o.day,
+      start: o.start,
+      durationMinutes: o.durationMinutes,
+      teacherId: o.teacherId,
+      roomId: o.roomId,
+      status: o.status,
+    }
+  })
+}
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number)
