@@ -110,23 +110,23 @@ public class DemoSeedService {
     }
 
     private void seedClasses(Long institutionId, Map<String, Long> subjectIds, Map<String, Long> roomIds, Map<String, Long> teacherIds) {
-        saveClass(institutionId, "Maths Methods U3/4", subjectIds.get("mm"), 6, "published", "Mon", "16:00", teacherIds.get("sarah"), roomIds.get("a"));
-        saveClass(institutionId, "English U3/4", subjectIds.get("en"), 5, "published", "Tue", "17:00", teacherIds.get("james"), roomIds.get("b"));
-        saveClass(institutionId, "Chemistry U3/4", subjectIds.get("ch"), 7, "published", "Wed", "17:00", teacherIds.get("priya"), roomIds.get("c"));
+        saveClass(institutionId, "Maths Methods U3/4", subjectIds.get("mm"), 6, "published", "Mon", "16:00", 60, teacherIds.get("sarah"), roomIds.get("a"));
+        saveClass(institutionId, "English U3/4", subjectIds.get("en"), 5, "published", "Tue", "17:00", 60, teacherIds.get("james"), roomIds.get("b"));
+        saveClass(institutionId, "Chemistry U3/4", subjectIds.get("ch"), 7, "published", "Wed", "17:00", 60, teacherIds.get("priya"), roomIds.get("c"));
         // Deliberate double-booking: same teacher AND same room, both Thu 17:00 — gives the
         // conflict detector something to flag the moment a new tenant looks at their timetable.
-        saveClass(institutionId, "Specialist Maths U3/4", subjectIds.get("sm"), 4, "published", "Thu", "17:00", teacherIds.get("david"), roomIds.get("a"));
-        saveClass(institutionId, "Physics U3/4", subjectIds.get("ph"), 5, "published", "Thu", "17:00", teacherIds.get("david"), roomIds.get("a"));
+        saveClass(institutionId, "Specialist Maths U3/4", subjectIds.get("sm"), 4, "published", "Thu", "17:00", 60, teacherIds.get("david"), roomIds.get("a"));
+        saveClass(institutionId, "Physics U3/4", subjectIds.get("ph"), 5, "published", "Thu", "17:00", 60, teacherIds.get("david"), roomIds.get("a"));
 
-        saveClass(institutionId, "Biology U3/4", subjectIds.get("bi"), 6, "unscheduled", null, null, null, null);
-        saveClass(institutionId, "Maths Methods U1/2", subjectIds.get("mm"), 8, "unscheduled", null, null, null, null);
-        saveClass(institutionId, "English U1/2", subjectIds.get("en"), 6, "unscheduled", null, null, null, null);
-        saveClass(institutionId, "Chemistry U1/2", subjectIds.get("ch"), 5, "unscheduled", null, null, null, null);
-        saveClass(institutionId, "Specialist Maths U1/2", subjectIds.get("sm"), 3, "unscheduled", null, null, null, null);
+        saveClass(institutionId, "Biology U3/4", subjectIds.get("bi"), 6, "unscheduled", null, null, 60, null, null);
+        saveClass(institutionId, "Maths Methods U1/2", subjectIds.get("mm"), 8, "unscheduled", null, null, 60, null, null);
+        saveClass(institutionId, "English U1/2", subjectIds.get("en"), 6, "unscheduled", null, null, 60, null, null);
+        saveClass(institutionId, "Chemistry U1/2", subjectIds.get("ch"), 5, "unscheduled", null, null, 60, null, null);
+        saveClass(institutionId, "Specialist Maths U1/2", subjectIds.get("sm"), 3, "unscheduled", null, null, 60, null, null);
     }
 
     private void saveClass(Long institutionId, String name, Long subjectId, int studentCount, String status,
-                            String day, String start, Long teacherId, Long roomId) {
+                            String day, String start, Integer durationMinutes, Long teacherId, Long roomId) {
         ClassSession session = new ClassSession();
         session.setInstitutionId(institutionId);
         session.setName(name);
@@ -135,6 +135,7 @@ public class DemoSeedService {
         session.setStatus(status);
         session.setDay(day);
         session.setStart(start);
+        session.setDurationMinutes(durationMinutes);
         session.setTeacherId(teacherId);
         session.setRoomId(roomId);
         session.setDate(day == null ? null : WeekDates.forDay(day));

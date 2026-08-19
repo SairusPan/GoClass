@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useScheduling } from '../state/SchedulingContext'
 import { Badge, Button, Card } from '../components/ui'
-import { DAYS, DAY_LABELS, TIME_SLOTS, type ClassGroup, type Day } from '../types'
-import { generateSuggestions, type Suggestion } from '../utils/scheduling'
+import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type ClassGroup, type Day } from '../types'
+import { addMinutesToTime, generateSuggestions, type Suggestion } from '../utils/scheduling'
 import { WEEK_DATES } from '../data/mockData'
 
 export default function ScheduleBoard() {
@@ -41,11 +41,11 @@ export default function ScheduleBoard() {
 
   function applySuggestion(cls: ClassGroup, s: Suggestion) {
     assignClass(cls.id, { teacherId: s.teacherId, roomId: s.roomId, day: s.day, start: s.start, status: 'draft' })
-    setSuggestions((prev) => {
-      const next = { ...prev }
-      delete next[cls.id]
-      return next
-    })
+    // Every other class's displayed suggestions were computed against the pre-apply snapshot of
+    // `classes`, so they can now recommend a teacher/room/slot that clashes with what was just
+    // applied. Clear them all rather than leave stale suggestions the admin could apply into a
+    // fresh conflict — "Generate suggestions" recomputes from the current state on demand.
+    setSuggestions({})
   }
 
   const editingClass = classes.find((c) => c.id === editingId) ?? null
@@ -98,24 +98,29 @@ export default function ScheduleBoard() {
                   <div>
                     <span className="font-medium text-slate-800">{cls.name}</span>
                     <span className="ml-2 text-xs text-slate-500">
-                      {subjectName(cls.subjectId)} · {cls.studentCount} students
+                      {subjectName(cls.subjectId)} · {cls.studentCount} students · {cls.durationMinutes} min
                     </span>
                   </div>
-                  {!suggestions[cls.id] && <Badge tone="amber">Needs a slot</Badge>}
-                  {suggestions[cls.id] && (
-                    <button
-                      onClick={() =>
-                        setSuggestions((prev) => {
-                          const next = { ...prev }
-                          delete next[cls.id]
-                          return next
-                        })
-                      }
-                      className="text-xs text-slate-400 hover:text-slate-600"
-                    >
-                      Hide
-                    </button>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {!suggestions[cls.id] && <Badge tone="amber">Needs a slot</Badge>}
+                    <Button size="sm" variant="secondary" onClick={() => setEditingId(cls.id)}>
+                      Schedule manually
+                    </Button>
+                    {suggestions[cls.id] && (
+                      <button
+                        onClick={() =>
+                          setSuggestions((prev) => {
+                            const next = { ...prev }
+                            delete next[cls.id]
+                            return next
+                          })
+                        }
+                        className="text-xs text-slate-400 hover:text-slate-600"
+                      >
+                        Hide
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {suggestions[cls.id] && (
@@ -188,6 +193,9 @@ export default function ScheduleBoard() {
                               <div className="font-medium text-slate-800">{cls.name}</div>
                               <div className="text-slate-500">{teacherName(cls.teacherId)}</div>
                               <div className="text-slate-400">{roomName(cls.roomId)}</div>
+                              <div className="text-slate-400">
+                                {cls.start}–{addMinutesToTime(cls.start as string, cls.durationMinutes)}
+                              </div>
                             </button>
                           )
                         })}
@@ -208,18 +216,19 @@ export default function ScheduleBoard() {
 
 function EditPanel({ cls, onClose }: { cls: ClassGroup; onClose: () => void }) {
   const { teachers, rooms, assignClass, publishClass } = useScheduling()
-  const [teacherId, setTeacherId] = useState(cls.teacherId ?? '')
-  const [roomId, setRoomId] = useState(cls.roomId ?? '')
+  const [teacherId, setTeacherId] = useState(cls.teacherId ?? teachers[0]?.id ?? '')
+  const [roomId, setRoomId] = useState(cls.roomId ?? rooms[0]?.id ?? '')
   const [day, setDay] = useState<Day>(cls.day ?? 'Mon')
   const [start, setStart] = useState(cls.start ?? TIME_SLOTS[0])
+  const [durationMinutes, setDurationMinutes] = useState(cls.durationMinutes)
 
   function save() {
-    assignClass(cls.id, { teacherId, roomId, day, start })
+    assignClass(cls.id, { teacherId, roomId, day, start, durationMinutes })
     onClose()
   }
 
   function saveAndPublish() {
-    assignClass(cls.id, { teacherId, roomId, day, start })
+    assignClass(cls.id, { teacherId, roomId, day, start, durationMinutes })
     publishClass(cls.id)
     onClose()
   }
@@ -293,6 +302,21 @@ function EditPanel({ cls, onClose }: { cls: ClassGroup; onClose: () => void }) {
               </select>
             </label>
           </div>
+
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Duration</span>
+            <select
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(Number(e.target.value))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2"
+            >
+              {DURATION_OPTIONS.map((d) => (
+                <option key={d} value={d}>
+                  {d} min
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <p className="mt-3 text-xs text-slate-400">

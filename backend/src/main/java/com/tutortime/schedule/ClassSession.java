@@ -43,6 +43,9 @@ public class ClassSession {
     @Column(name = "start_time", length = 8)
     private String start;
 
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes;
+
     private Long teacherId;
 
     private Long roomId;
@@ -110,6 +113,14 @@ public class ClassSession {
 
     public void setStart(String start) {
         this.start = start;
+    }
+
+    public Integer getDurationMinutes() {
+        return durationMinutes;
+    }
+
+    public void setDurationMinutes(Integer durationMinutes) {
+        this.durationMinutes = durationMinutes;
     }
 
     public Long getTeacherId() {

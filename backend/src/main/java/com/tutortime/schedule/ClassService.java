@@ -35,6 +35,18 @@ public class ClassService {
     }
 
     @Transactional
+    public ClassResponse create(Long institutionId, CreateClassRequest request) {
+        ClassSession session = new ClassSession();
+        session.setInstitutionId(institutionId);
+        session.setName(request.name().trim());
+        session.setSubjectId(request.subjectId());
+        session.setStudentCount(request.studentCount());
+        session.setDurationMinutes(request.durationMinutes() != null ? request.durationMinutes() : 60);
+        session.setStatus("unscheduled");
+        return ClassResponse.from(repository.save(session));
+    }
+
+    @Transactional
     public ClassResponse assign(Long institutionId, Long classId, AssignClassRequest request) {
         ClassSession session = find(institutionId, classId);
 
@@ -45,6 +57,7 @@ public class ClassService {
             session.setDate(WeekDates.forDay(request.day()));
         }
         if (request.start() != null) session.setStart(request.start());
+        if (request.durationMinutes() != null) session.setDurationMinutes(request.durationMinutes());
 
         if (request.status() != null) {
             session.setStatus(request.status());
@@ -90,8 +103,11 @@ public class ClassService {
                 ? "TBA"
                 : roomRepository.findByIdAndInstitutionId(session.getRoomId(), institutionId).map(Room::getName).orElse("TBA");
 
+        String timeRange = session.getDurationMinutes() == null
+                ? session.getStart()
+                : session.getStart() + "–" + addMinutes(session.getStart(), session.getDurationMinutes());
         String message = "You're scheduled to teach \"" + session.getName() + "\" on "
-                + session.getDay() + " " + session.getStart() + " in " + roomName + ".";
+                + session.getDay() + " " + timeRange + " in " + roomName + ".";
 
         NotificationItem notification = new NotificationItem();
         notification.setInstitutionId(institutionId);
@@ -100,6 +116,10 @@ public class ClassService {
         notificationRepository.save(notification);
 
         emailService.send(teacher.getEmail(), "You're scheduled for a class — GoClass", message);
+    }
+
+    private static String addMinutes(String hhmm, int minutes) {
+        return java.time.LocalTime.parse(hhmm).plusMinutes(minutes).toString();
     }
 
     private ClassSession find(Long institutionId, Long classId) {

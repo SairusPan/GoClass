@@ -119,6 +119,44 @@ class ScheduleFlowIntegrationTest {
     }
 
     @Test
+    void creatingAClassAddsItToTheListAsUnscheduled() throws Exception {
+        String token = registerAndGetAccessToken("createclass");
+        JsonNode subjects = listAsJson("/api/subjects", token);
+        long subjectId = subjects.get(0).get("id").asLong();
+
+        mockMvc.perform(post("/api/classes")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Brand New Class\",\"subjectId\":" + subjectId + ",\"studentCount\":5}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Brand New Class"))
+                .andExpect(jsonPath("$.status").value("unscheduled"))
+                .andExpect(jsonPath("$.subjectId").value(subjectId))
+                .andExpect(jsonPath("$.teacherId").doesNotExist());
+
+        JsonNode classes = listAsJson("/api/classes", token);
+        assertThat(classes.size()).isEqualTo(11); // 10 seeded + this one
+        assertThat(findFirst(classes, c -> "Brand New Class".equals(c.get("name").asText()))).isNotNull();
+    }
+
+    @Test
+    void creatingAClassInOneInstitutionIsInvisibleToAnother() throws Exception {
+        String tokenA = registerAndGetAccessToken("createiso1");
+        String tokenB = registerAndGetAccessToken("createiso2");
+        JsonNode subjectsA = listAsJson("/api/subjects", tokenA);
+        long subjectId = subjectsA.get(0).get("id").asLong();
+
+        mockMvc.perform(post("/api/classes")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Only In A\",\"subjectId\":" + subjectId + ",\"studentCount\":5}"))
+                .andExpect(status().isCreated());
+
+        JsonNode classesB = listAsJson("/api/classes", tokenB);
+        assertThat(classesB.size()).isEqualTo(10); // unaffected by A's new class
+    }
+
+    @Test
     void assigningAnUnscheduledClassMovesItToDraft() throws Exception {
         String token = registerAndGetAccessToken("assigncheck");
 
