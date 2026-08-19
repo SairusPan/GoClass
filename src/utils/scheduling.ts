@@ -1,8 +1,30 @@
 import { DAYS, TIME_SLOTS, type ClassGroup, type Conflict, type Day, type Room, type Teacher } from '../types'
 import { WEEK_DATES } from '../data/mockData'
 
-function slotWithinAvailability(day: Day, start: string, teacher: Teacher): boolean {
-  return teacher.availability.some((a) => a.day === day && start >= a.start && start < a.end)
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+/** Adds `minutes` to a "HH:MM" clock time, e.g. addMinutesToTime('16:00', 90) -> '17:30'. */
+export function addMinutesToTime(hhmm: string, minutes: number): string {
+  const total = toMinutes(hhmm) + minutes
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function timesOverlap(aStart: string, aDuration: number, bStart: string, bDuration: number): boolean {
+  const aFrom = toMinutes(aStart)
+  const aTo = aFrom + aDuration
+  const bFrom = toMinutes(bStart)
+  const bTo = bFrom + bDuration
+  return aFrom < bTo && bFrom < aTo
+}
+
+function slotWithinAvailability(day: Day, start: string, durationMinutes: number, teacher: Teacher): boolean {
+  const end = addMinutesToTime(start, durationMinutes)
+  return teacher.availability.some((a) => a.day === day && start >= a.start && end <= a.end)
 }
 
 /** Scans every scheduled/draft/published class and flags teacher or room double-bookings. */
@@ -14,7 +36,8 @@ export function findConflicts(classes: ClassGroup[]): Conflict[] {
     for (let j = i + 1; j < active.length; j++) {
       const a = active[i]
       const b = active[j]
-      if (a.day !== b.day || a.start !== b.start) continue
+      if (a.day !== b.day) continue
+      if (!timesOverlap(a.start as string, a.durationMinutes, b.start as string, b.durationMinutes)) continue
 
       if (a.teacherId && a.teacherId === b.teacherId) {
         conflicts.push({
@@ -46,6 +69,17 @@ export interface Suggestion {
   reason: string
 }
 
+interface Booking {
+  day: Day
+  start: string
+  durationMinutes: number
+}
+
+function isFree(bookings: Booking[] | undefined, day: Day, start: string, durationMinutes: number): boolean {
+  if (!bookings) return true
+  return !bookings.some((b) => b.day === day && timesOverlap(b.start, b.durationMinutes, start, durationMinutes))
+}
+
 /**
  * Greedy candidate generator: for one unscheduled class, find (teacher, room, day, start)
  * combinations that satisfy the hard constraints (subject match, teacher availability,
@@ -60,20 +94,20 @@ export function generateSuggestions(
   limit = 3,
 ): Suggestion[] {
   const eligibleTeachers = teachers.filter((t) => t.subjects.includes(target.subjectId))
-  const busyByTeacher = new Map<string, Set<string>>()
-  const busyByRoom = new Map<string, Set<string>>()
+  const bookingsByTeacher = new Map<string, Booking[]>()
+  const bookingsByRoom = new Map<string, Booking[]>()
 
   allClasses
     .filter((c) => c.status !== 'unscheduled' && c.id !== target.id && c.day && c.start)
     .forEach((c) => {
-      const key = `${c.day}|${c.start}`
+      const booking: Booking = { day: c.day as Day, start: c.start as string, durationMinutes: c.durationMinutes }
       if (c.teacherId) {
-        if (!busyByTeacher.has(c.teacherId)) busyByTeacher.set(c.teacherId, new Set())
-        busyByTeacher.get(c.teacherId)!.add(key)
+        if (!bookingsByTeacher.has(c.teacherId)) bookingsByTeacher.set(c.teacherId, [])
+        bookingsByTeacher.get(c.teacherId)!.push(booking)
       }
       if (c.roomId) {
-        if (!busyByRoom.has(c.roomId)) busyByRoom.set(c.roomId, new Set())
-        busyByRoom.get(c.roomId)!.add(key)
+        if (!bookingsByRoom.has(c.roomId)) bookingsByRoom.set(c.roomId, [])
+        bookingsByRoom.get(c.roomId)!.push(booking)
       }
     })
 
@@ -83,12 +117,11 @@ export function generateSuggestions(
   for (const teacher of eligibleTeachers) {
     for (const day of DAYS) {
       for (const start of TIME_SLOTS) {
-        if (!slotWithinAvailability(day, start, teacher)) continue
-        const key = `${day}|${start}`
-        if (busyByTeacher.get(teacher.id)?.has(key)) continue
+        if (!slotWithinAvailability(day, start, target.durationMinutes, teacher)) continue
+        if (!isFree(bookingsByTeacher.get(teacher.id), day, start, target.durationMinutes)) continue
 
         for (const room of suitableRooms) {
-          if (busyByRoom.get(room.id)?.has(key)) continue
+          if (!isFree(bookingsByRoom.get(room.id), day, start, target.durationMinutes)) continue
 
           let score = 1
           let reason = 'Teacher available and qualified for this subject'
@@ -119,11 +152,17 @@ export function findSubstitutes(
   teachers: Teacher[],
 ): SubstituteCandidate[] {
   if (!session.day || !session.start) return []
-  const key = `${session.day}|${session.start}`
 
   const busyTeacherIds = new Set(
     allClasses
-      .filter((c) => c.id !== session.id && c.status !== 'unscheduled' && `${c.day}|${c.start}` === key)
+      .filter(
+        (c) =>
+          c.id !== session.id &&
+          c.status !== 'unscheduled' &&
+          c.day === session.day &&
+          c.start &&
+          timesOverlap(c.start, c.durationMinutes, session.start as string, session.durationMinutes),
+      )
       .map((c) => c.teacherId)
       .filter(Boolean) as string[],
   )
@@ -131,7 +170,7 @@ export function findSubstitutes(
   return teachers
     .filter((t) => t.id !== session.teacherId)
     .filter((t) => t.subjects.includes(session.subjectId))
-    .filter((t) => slotWithinAvailability(session.day as Day, session.start as string, t))
+    .filter((t) => slotWithinAvailability(session.day as Day, session.start as string, session.durationMinutes, t))
     .filter((t) => !busyTeacherIds.has(t.id))
     .map((t) => ({
       teacherId: t.id,
@@ -158,18 +197,17 @@ export function findRescheduleOptions(
   rooms: Room[],
   limit = 3,
 ): RescheduleOption[] {
-  const busyByTeacher = new Set(
-    allClasses
-      .filter((c) => c.id !== session.id && c.status !== 'unscheduled' && c.teacherId === teacher.id)
-      .map((c) => `${c.day}|${c.start}`),
-  )
-  const busyByRoom = new Map<string, Set<string>>()
+  const teacherBookings: Booking[] = allClasses
+    .filter((c) => c.id !== session.id && c.status !== 'unscheduled' && c.teacherId === teacher.id && c.day && c.start)
+    .map((c) => ({ day: c.day as Day, start: c.start as string, durationMinutes: c.durationMinutes }))
+
+  const bookingsByRoom = new Map<string, Booking[]>()
   allClasses
-    .filter((c) => c.id !== session.id && c.status !== 'unscheduled' && c.roomId)
+    .filter((c) => c.id !== session.id && c.status !== 'unscheduled' && c.roomId && c.day && c.start)
     .forEach((c) => {
-      const key = `${c.day}|${c.start}`
-      if (!busyByRoom.has(c.roomId as string)) busyByRoom.set(c.roomId as string, new Set())
-      busyByRoom.get(c.roomId as string)!.add(key)
+      const booking: Booking = { day: c.day as Day, start: c.start as string, durationMinutes: c.durationMinutes }
+      if (!bookingsByRoom.has(c.roomId as string)) bookingsByRoom.set(c.roomId as string, [])
+      bookingsByRoom.get(c.roomId as string)!.push(booking)
     })
 
   const suitableRooms = rooms.filter((r) => r.capacity >= session.studentCount)
@@ -178,12 +216,11 @@ export function findRescheduleOptions(
   for (const day of DAYS) {
     for (const start of TIME_SLOTS) {
       if (day === session.day && start === session.start) continue
-      if (!slotWithinAvailability(day, start, teacher)) continue
-      const key = `${day}|${start}`
-      if (busyByTeacher.has(key)) continue
+      if (!slotWithinAvailability(day, start, session.durationMinutes, teacher)) continue
+      if (!isFree(teacherBookings, day, start, session.durationMinutes)) continue
 
       for (const room of suitableRooms) {
-        if (busyByRoom.get(room.id)?.has(key)) continue
+        if (!isFree(bookingsByRoom.get(room.id), day, start, session.durationMinutes)) continue
         options.push({ day, start, date: WEEK_DATES[day], roomId: room.id, score: 1 })
       }
     }

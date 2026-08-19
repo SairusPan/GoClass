@@ -11,8 +11,10 @@ export const DAY_LABELS: Record<Day, string> = {
   Sat: 'Saturday',
 }
 
-// Fixed grid of lesson start times used across the demo (1-hour sessions)
+// Fixed grid of lesson start times
 export const TIME_SLOTS: string[] = ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00', '18:00']
+
+export const DURATION_OPTIONS: number[] = [30, 45, 60, 90, 120]
 
 export interface Availability {
   day: Day
@@ -50,6 +52,7 @@ export interface ClassGroup {
   status: ClassStatus
   day: Day | null
   start: string | null // "HH:MM"
+  durationMinutes: number
   teacherId: string | null
   roomId: string | null
   date: string | null // concrete calendar date for the current demo week, e.g. "2026-08-17"

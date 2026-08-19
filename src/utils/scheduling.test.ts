@@ -25,6 +25,7 @@ function cls(overrides: Partial<ClassGroup> & { id: string }): ClassGroup {
     status: 'published',
     day: null,
     start: null,
+    durationMinutes: 60,
     teacherId: null,
     roomId: null,
     date: null,

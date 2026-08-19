@@ -22,6 +22,7 @@ interface SchedulingState {
   addTeacher: (t: { name: string; phone: string; email: string; subjects: string[]; availability: Availability[] }) => Promise<void>
   addSubject: (name: string) => Promise<void>
   addRoom: (name: string, capacity: number) => Promise<void>
+  addClass: (c: { name: string; subjectId: string; studentCount: number }) => Promise<void>
 }
 
 const SchedulingContext = createContext<SchedulingState | null>(null)
@@ -55,6 +56,7 @@ interface BackendClass {
   status: ClassGroup['status']
   day: Day | null
   start: string | null
+  durationMinutes: number
   teacherId: number | null
   roomId: number | null
   date: string | null
@@ -103,6 +105,7 @@ function mapClass(c: BackendClass): ClassGroup {
     status: c.status,
     day: c.day,
     start: c.start,
+    durationMinutes: c.durationMinutes,
     teacherId: c.teacherId == null ? null : String(c.teacherId),
     roomId: c.roomId == null ? null : String(c.roomId),
     date: c.date,
@@ -173,13 +176,14 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
 
   async function assignClass(
     classId: string,
-    patch: Partial<Pick<ClassGroup, 'teacherId' | 'roomId' | 'day' | 'start' | 'status'>>,
+    patch: Partial<Pick<ClassGroup, 'teacherId' | 'roomId' | 'day' | 'start' | 'durationMinutes' | 'status'>>,
   ) {
     const body: Record<string, unknown> = {}
     if ('teacherId' in patch) body.teacherId = patch.teacherId == null ? null : Number(patch.teacherId)
     if ('roomId' in patch) body.roomId = patch.roomId == null ? null : Number(patch.roomId)
     if ('day' in patch) body.day = patch.day
     if ('start' in patch) body.start = patch.start
+    if ('durationMinutes' in patch) body.durationMinutes = patch.durationMinutes
     if ('status' in patch) body.status = patch.status
 
     const updated = await apiFetchJson<BackendClass>(`/api/classes/${classId}`, {
@@ -252,6 +256,19 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     setRooms((prev) => [...prev, mapRoom(created)])
   }
 
+  async function addClass(c: { name: string; subjectId: string; studentCount: number; durationMinutes: number }) {
+    const created = await apiFetchJson<BackendClass>('/api/classes', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: c.name,
+        subjectId: Number(c.subjectId),
+        studentCount: c.studentCount,
+        durationMinutes: c.durationMinutes,
+      }),
+    })
+    setClasses((prev) => [...prev, mapClass(created)])
+  }
+
   const value: SchedulingState = {
     classes,
     teachers,
@@ -270,6 +287,7 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     addTeacher,
     addSubject,
     addRoom,
+    addClass,
   }
 
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>

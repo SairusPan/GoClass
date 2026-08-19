@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { useScheduling } from '../state/SchedulingContext'
 import { Badge, Button, Card } from '../components/ui'
-import { DAYS, DAY_LABELS, TIME_SLOTS, type Availability, type Day } from '../types'
+import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type Availability, type Day } from '../types'
 
-type Tab = 'teachers' | 'subjects' | 'rooms'
+type Tab = 'teachers' | 'subjects' | 'rooms' | 'classes'
 
 export default function DataSetup() {
   const [tab, setTab] = useState<Tab>('teachers')
@@ -13,13 +13,13 @@ export default function DataSetup() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Teachers &amp; setup data</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Enter your centre's teachers, subjects and rooms. In a later version this will also support importing
-          from Excel.
+          Enter your centre's teachers, subjects, rooms and classes. In a later version this will also support
+          importing from Excel.
         </p>
       </div>
 
       <div className="flex gap-1 border-b border-slate-200">
-        {(['teachers', 'subjects', 'rooms'] as Tab[]).map((t) => (
+        {(['teachers', 'subjects', 'rooms', 'classes'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -35,6 +35,7 @@ export default function DataSetup() {
       {tab === 'teachers' && <TeachersTab />}
       {tab === 'subjects' && <SubjectsTab />}
       {tab === 'rooms' && <RoomsTab />}
+      {tab === 'classes' && <ClassesTab />}
     </div>
   )
 }
@@ -321,6 +322,111 @@ function RoomsTab() {
               <tr key={r.id}>
                 <td className="px-4 py-3 font-medium text-slate-800">{r.name}</td>
                 <td className="px-4 py-3 text-slate-600">{r.capacity} seats</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  )
+}
+
+function ClassesTab() {
+  const { classes, subjects, addClass } = useScheduling()
+  const [name, setName] = useState('')
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
+  const [studentCount, setStudentCount] = useState(6)
+  const [durationMinutes, setDurationMinutes] = useState(60)
+
+  function subjectName(id: string) {
+    return subjects.find((s) => s.id === id)?.name ?? id
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="flex items-end gap-2 p-4">
+        <Field label="Class name">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            placeholder="e.g. Biology U1/2"
+          />
+        </Field>
+        <Field label="Subject">
+          <select
+            value={subjectId}
+            onChange={(e) => setSubjectId(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Students">
+          <input
+            type="number"
+            min={1}
+            value={studentCount}
+            onChange={(e) => setStudentCount(Number(e.target.value))}
+            className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field label="Duration">
+          <select
+            value={durationMinutes}
+            onChange={(e) => setDurationMinutes(Number(e.target.value))}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            {DURATION_OPTIONS.map((d) => (
+              <option key={d} value={d}>
+                {d} min
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Button
+          onClick={() => {
+            if (!name.trim() || !subjectId) return
+            addClass({ name: name.trim(), subjectId, studentCount, durationMinutes })
+            setName('')
+          }}
+          disabled={!subjectId}
+        >
+          Add class
+        </Button>
+      </Card>
+
+      {subjects.length === 0 && (
+        <p className="text-sm text-slate-500">Add a subject first (Subjects tab) before creating classes.</p>
+      )}
+
+      <Card className="overflow-hidden">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Subject</th>
+              <th className="px-4 py-3">Students</th>
+              <th className="px-4 py-3">Duration</th>
+              <th className="px-4 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {classes.map((c) => (
+              <tr key={c.id}>
+                <td className="px-4 py-3 font-medium text-slate-800">{c.name}</td>
+                <td className="px-4 py-3 text-slate-600">{subjectName(c.subjectId)}</td>
+                <td className="px-4 py-3 text-slate-600">{c.studentCount}</td>
+                <td className="px-4 py-3 text-slate-600">{c.durationMinutes} min</td>
+                <td className="px-4 py-3">
+                  <Badge tone={c.status === 'published' ? 'green' : c.status === 'draft' ? 'amber' : 'slate'}>
+                    {c.status}
+                  </Badge>
+                </td>
               </tr>
             ))}
           </tbody>
