@@ -13,7 +13,7 @@ interface SchedulingState {
   conflicts: ReturnType<typeof findConflicts>
   isLoading: boolean
 
-  assignClass: (classId: string, patch: Partial<Pick<ClassGroup, 'teacherId' | 'roomId' | 'day' | 'start' | 'status'>>) => Promise<void>
+  assignClass: (classId: string, patch: Partial<Pick<ClassGroup, 'teacherId' | 'roomId' | 'day' | 'start' | 'durationMinutes' | 'status'>>) => Promise<void>
   publishClass: (classId: string) => Promise<void>
   publishAllDrafts: () => Promise<void>
   fileLeave: (classId: string, reason: string) => Promise<string>
@@ -22,7 +22,7 @@ interface SchedulingState {
   addTeacher: (t: { name: string; phone: string; email: string; subjects: string[]; availability: Availability[] }) => Promise<void>
   addSubject: (name: string) => Promise<void>
   addRoom: (name: string, capacity: number) => Promise<void>
-  addClass: (c: { name: string; subjectId: string; studentCount: number }) => Promise<void>
+  addClass: (c: { name: string; subjectId: string; studentCount: number; durationMinutes: number }) => Promise<void>
 }
 
 const SchedulingContext = createContext<SchedulingState | null>(null)
