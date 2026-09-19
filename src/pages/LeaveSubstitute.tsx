@@ -5,8 +5,28 @@ import { DAY_LABELS, type Day } from '../types'
 import { findRescheduleOptions, findSubstitutes } from '../utils/scheduling'
 
 export default function LeaveSubstitute() {
-  const { classes, teachers, subjects, leaveRecords, notifications, fileLeave, resolveWithSubstitute, resolveWithReschedule } =
-    useScheduling()
+  const {
+    classes,
+    teachers,
+    subjects,
+    leaveRecords,
+    notifications,
+    fileLeave,
+    resolveWithSubstitute,
+    resolveWithReschedule,
+    updateLeaveReason,
+    cancelLeave,
+  } = useScheduling()
+  const [error, setError] = useState('')
+
+  async function run(action: () => Promise<unknown>) {
+    setError('')
+    try {
+      await action()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong — please try again.')
+    }
+  }
 
   const scheduledSessions = classes.filter((c) => c.status !== 'unscheduled' && c.teacherId)
   const [selectedClassId, setSelectedClassId] = useState(scheduledSessions[0]?.id ?? '')
@@ -21,12 +41,14 @@ export default function LeaveSubstitute() {
 
   function submitLeave() {
     if (!selectedClassId) return
-    fileLeave(selectedClassId, reason.trim() || 'No reason given')
-    setReason('')
+    run(async () => {
+      await fileLeave(selectedClassId, reason.trim() || 'No reason given')
+      setReason('')
+    })
   }
 
   const pending = leaveRecords.filter((r) => r.resolution === 'pending')
-  const resolved = leaveRecords.filter((r) => r.resolution !== 'pending')
+  const history = leaveRecords.filter((r) => r.resolution !== 'pending')
 
   return (
     <div className="space-y-8">
@@ -70,6 +92,15 @@ export default function LeaveSubstitute() {
         </div>
       </Card>
 
+      {error && (
+        <Card className="flex items-start justify-between gap-4 border-red-200 bg-red-50 p-3">
+          <p className="text-sm text-red-700">{error}</p>
+          <button onClick={() => setError('')} className="shrink-0 text-xs font-medium text-red-500 hover:text-red-700">
+            Dismiss
+          </button>
+        </Card>
+      )}
+
       {pending.length > 0 && (
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-slate-900">Pending — needs cover</h2>
@@ -79,31 +110,61 @@ export default function LeaveSubstitute() {
               recordId={record.id}
               classId={record.classId}
               reason={record.reason}
-              onSubstitute={resolveWithSubstitute}
-              onReschedule={resolveWithReschedule}
+              onSubstitute={(id, teacherId) => run(() => resolveWithSubstitute(id, teacherId))}
+              onReschedule={(id, day, start, roomId) => run(() => resolveWithReschedule(id, day, start, roomId))}
+              onSaveReason={(id, next) => run(() => updateLeaveReason(id, next))}
+              onCancel={(id) => {
+                if (confirm('Cancel this leave request? The class goes back to its original teacher and time.')) {
+                  run(() => cancelLeave(id))
+                }
+              }}
             />
           ))}
         </div>
       )}
 
-      {resolved.length > 0 && (
+      {history.length > 0 && (
         <Card className="p-5">
-          <h2 className="text-sm font-semibold text-slate-900">Resolved leave requests</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Past leave requests</h2>
           <div className="mt-3 space-y-2">
-            {resolved.map((r) => {
+            {history.map((r) => {
               const cls = classes.find((c) => c.id === r.classId)
+              const cancelled = r.resolution === 'cancelled'
               return (
-                <div key={r.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                  <span>
+                <div
+                  key={r.id}
+                  className={`flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm ${
+                    cancelled ? 'bg-slate-50 text-slate-400' : 'bg-slate-50'
+                  }`}
+                >
+                  <span className={cancelled ? 'line-through' : undefined}>
                     <strong>{cls?.name}</strong> — {r.reason}
                   </span>
-                  {r.resolution === 'substitute' ? (
-                    <Badge tone="green">Covered by {teacherName(r.resolvedTeacherId ?? null)}</Badge>
-                  ) : (
-                    <Badge tone="blue">
-                      Rescheduled to {r.resolvedDay && DAY_LABELS[r.resolvedDay]} {r.resolvedStart} ({r.resolvedDate})
-                    </Badge>
-                  )}
+                  <span className="flex shrink-0 items-center gap-3">
+                    {cancelled ? (
+                      <Badge tone="slate">Cancelled</Badge>
+                    ) : r.resolution === 'substitute' ? (
+                      <Badge tone="green">Covered by {teacherName(r.resolvedTeacherId ?? null)}</Badge>
+                    ) : (
+                      <Badge tone="blue">
+                        Rescheduled to {r.resolvedDay && DAY_LABELS[r.resolvedDay]} {r.resolvedStart} ({r.resolvedDate})
+                      </Badge>
+                    )}
+                    {!cancelled && (
+                      <button
+                        onClick={() => {
+                          if (
+                            confirm('Cancel this leave request? The class goes back to its original teacher and time.')
+                          ) {
+                            run(() => cancelLeave(r.id))
+                          }
+                        }}
+                        className="text-xs font-medium text-red-500 hover:text-red-700"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </span>
                 </div>
               )
             })}
@@ -138,14 +199,19 @@ function PendingLeaveCard({
   reason,
   onSubstitute,
   onReschedule,
+  onSaveReason,
+  onCancel,
 }: {
   recordId: string
   classId: string
   reason: string
   onSubstitute: (leaveId: string, teacherId: string) => void
   onReschedule: (leaveId: string, day: Day, start: string, roomId: string) => void
+  onSaveReason: (leaveId: string, reason: string) => void
+  onCancel: (leaveId: string) => void
 }) {
   const { classes, teachers, rooms, subjects } = useScheduling()
+  const [draftReason, setDraftReason] = useState<string | null>(null)
   const session = classes.find((c) => c.id === classId) ?? null
   const originalTeacher = session ? teachers.find((t) => t.id === session.teacherId) ?? null : null
   const substitutes = useMemo(
@@ -171,9 +237,50 @@ function PendingLeaveCard({
             {subjects.find((s) => s.id === session.subjectId)?.name} · {session.day} {session.start} ({session.date})
           </span>
         </div>
-        <Badge tone="amber">Away: {originalTeacher?.name}</Badge>
+        <span className="flex shrink-0 items-center gap-3">
+          <Badge tone="amber">Away: {originalTeacher?.name}</Badge>
+          <button
+            onClick={() => onCancel(recordId)}
+            className="text-xs font-medium text-red-500 hover:text-red-700"
+          >
+            Cancel request
+          </button>
+        </span>
       </div>
-      <p className="mt-1 text-xs text-slate-500">Reason: {reason}</p>
+
+      {draftReason === null ? (
+        <p className="mt-1 text-xs text-slate-500">
+          Reason: {reason}
+          <button
+            onClick={() => setDraftReason(reason)}
+            className="ml-2 font-medium text-indigo-600 hover:text-indigo-700"
+          >
+            Edit
+          </button>
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            value={draftReason}
+            onChange={(e) => setDraftReason(e.target.value)}
+            className="w-64 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            placeholder="e.g. Sick leave"
+          />
+          <Button
+            size="sm"
+            onClick={() => {
+              onSaveReason(recordId, draftReason.trim())
+              setDraftReason(null)
+            }}
+            disabled={!draftReason.trim()}
+          >
+            Save
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setDraftReason(null)}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       {substitutes.length > 0 ? (
         <div className="mt-3 space-y-2">

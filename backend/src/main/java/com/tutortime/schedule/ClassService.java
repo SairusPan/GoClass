@@ -15,6 +15,7 @@ public class ClassService {
     private final ClassOverrideRepository overrideRepository;
     private final TeacherRepository teacherRepository;
     private final RoomRepository roomRepository;
+    private final SubjectRepository subjectRepository;
     private final NotificationRepository notificationRepository;
     private final EmailService emailService;
 
@@ -23,12 +24,14 @@ public class ClassService {
             ClassOverrideRepository overrideRepository,
             TeacherRepository teacherRepository,
             RoomRepository roomRepository,
+            SubjectRepository subjectRepository,
             NotificationRepository notificationRepository,
             EmailService emailService) {
         this.repository = repository;
         this.overrideRepository = overrideRepository;
         this.teacherRepository = teacherRepository;
         this.roomRepository = roomRepository;
+        this.subjectRepository = subjectRepository;
         this.notificationRepository = notificationRepository;
         this.emailService = emailService;
     }
@@ -42,11 +45,40 @@ public class ClassService {
         ClassSession session = new ClassSession();
         session.setInstitutionId(institutionId);
         session.setName(request.name().trim());
-        session.setSubjectId(request.subjectId());
+        session.setSubjectId(requireOwnSubject(institutionId, request.subjectId()));
         session.setStudentCount(request.studentCount());
         session.setDurationMinutes(request.durationMinutes() != null ? request.durationMinutes() : 60);
         session.setStatus("unscheduled");
         return ClassResponse.from(repository.save(session));
+    }
+
+    /** Name, subject, size — the parts of a class that have nothing to do with where it sits
+     * on the timetable. Scheduling goes through {@link #assign} instead. */
+    @Transactional
+    public ClassResponse update(Long institutionId, Long classId, UpdateClassRequest request) {
+        ClassSession session = find(institutionId, classId);
+
+        if (request.name() != null) {
+            if (request.name().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "A class needs a name.");
+            }
+            session.setName(request.name().trim());
+        }
+        if (request.subjectId() != null) {
+            session.setSubjectId(requireOwnSubject(institutionId, request.subjectId()));
+        }
+        if (request.studentCount() != null) session.setStudentCount(request.studentCount());
+        if (request.durationMinutes() != null) session.setDurationMinutes(request.durationMinutes());
+
+        return ClassResponse.from(repository.save(session));
+    }
+
+    /** Subject ids arrive straight from the client, so a request could otherwise point a class
+     * at another institution's subject and quietly break tenant isolation. */
+    private Long requireOwnSubject(Long institutionId, Long subjectId) {
+        return subjectRepository.findByIdAndInstitutionId(subjectId, institutionId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Subject not found."))
+                .getId();
     }
 
     @Transactional

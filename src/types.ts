@@ -79,7 +79,7 @@ export interface LeaveRecord {
   classId: string
   originalTeacherId: string
   reason: string
-  resolution: 'pending' | 'substitute' | 'rescheduled'
+  resolution: 'pending' | 'substitute' | 'rescheduled' | 'cancelled'
   resolvedTeacherId?: string
   resolvedDay?: Day
   resolvedStart?: string
@@ -91,6 +91,7 @@ export interface NotificationItem {
   id: string
   audience: 'teacher' | 'student_parent'
   message: string
+  read: boolean
   createdAt: string
 }
 

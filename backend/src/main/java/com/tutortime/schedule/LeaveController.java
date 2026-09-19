@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,5 +43,16 @@ public class LeaveController {
     @PostMapping("/{id}/reschedule")
     public LeaveResponse resolveWithReschedule(HttpServletRequest request, @PathVariable Long id, @Valid @RequestBody ResolveRescheduleRequest body) {
         return service.resolveWithReschedule(CurrentInstitution.id(request), id, body);
+    }
+
+    @PatchMapping("/{id}")
+    public LeaveResponse update(HttpServletRequest request, @PathVariable Long id, @RequestBody UpdateLeaveRequest body) {
+        return service.update(CurrentInstitution.id(request), id, body);
+    }
+
+    /** Soft cancel — the row is kept for history, so this is a POST rather than a DELETE. */
+    @PostMapping("/{id}/cancel")
+    public LeaveResponse cancel(HttpServletRequest request, @PathVariable Long id) {
+        return service.cancel(CurrentInstitution.id(request), id);
     }
 }

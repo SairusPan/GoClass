@@ -27,6 +27,13 @@ public class NotificationItem {
     @Column(nullable = false, length = 500)
     private String message;
 
+    /**
+     * Mapped to is_read because READ is a reserved word in MySQL and an unquoted `read` column
+     * fails at DDL time. Rows that predate the column come back false, i.e. unread — the safe default.
+     */
+    @Column(name = "is_read", nullable = false)
+    private boolean read = false;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -56,6 +63,14 @@ public class NotificationItem {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public boolean isRead() {
+        return read;
+    }
+
+    public void setRead(boolean read) {
+        this.read = read;
     }
 
     public Instant getCreatedAt() {

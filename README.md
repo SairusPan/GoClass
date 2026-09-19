@@ -38,9 +38,15 @@ npm install && npm run dev          # localhost:5173
 ## Tests
 
 ```bash
-npm run test          # frontend: scheduling.ts unit tests (Vitest)
-cd backend && mvn test  # backend: auth + multi-tenant isolation integration tests
+npm run test          # frontend: 40 Vitest tests
+cd backend && mvn test  # backend: 38 integration tests (H2, no MySQL needed)
 ```
+
+Frontend tests split in two: `src/utils/scheduling.test.ts` covers the pure scheduling logic
+(conflicts, substitute matching, reschedule search), and `src/state/*.test.tsx` mount the real
+context providers against a stubbed `fetch` to pin down which endpoint each action calls, what
+body it sends, and how the response lands in state. The page components themselves aren't
+covered — there's no DOM-testing library in the project, only `jsdom`.
 
 ## Deploying (Railway)
 

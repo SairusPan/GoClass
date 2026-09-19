@@ -40,3 +40,10 @@ record AssignClassRequest(Long teacherId, Long roomId, String day, String start,
 
 record CreateClassRequest(@NotBlank String name, @NotNull Long subjectId, @Min(1) int studentCount, Integer durationMinutes) {
 }
+
+/**
+ * The descriptive half of a class, kept off PATCH /classes/{id} because that route already means
+ * "assign this to a slot" and promotes an unscheduled class to draft — renaming one shouldn't.
+ */
+record UpdateClassRequest(String name, Long subjectId, @Min(1) Integer studentCount, @Min(1) Integer durationMinutes) {
+}

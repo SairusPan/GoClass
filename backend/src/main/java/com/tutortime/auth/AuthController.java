@@ -7,11 +7,13 @@ import com.tutortime.auth.dto.LoginRequest;
 import com.tutortime.auth.dto.RefreshRequest;
 import com.tutortime.auth.dto.RegisterRequest;
 import com.tutortime.auth.dto.ResetPasswordRequest;
+import com.tutortime.auth.dto.UpdateInstitutionRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -61,6 +63,11 @@ public class AuthController {
     @GetMapping("/me")
     public InstitutionResponse me(HttpServletRequest request) {
         return authService.me(currentInstitutionId(request));
+    }
+
+    @PatchMapping("/me")
+    public InstitutionResponse updateProfile(HttpServletRequest request, @Valid @RequestBody UpdateInstitutionRequest body) {
+        return authService.updateProfile(currentInstitutionId(request), body);
     }
 
     private Long currentInstitutionId(HttpServletRequest request) {

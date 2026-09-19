@@ -11,4 +11,7 @@ Excel批量导入和课表导出先不做。它们价值高，但工作量大，
 
 ## 19/09/26: Completing the CRUD of tutors, subjects and classroom apis
 ![Flow graph for backend:](/src/Docs/Img/CRUDSTCR.png)
+- Additional CRUD for the folloing entities: U for class, U D for leaveRecord, U D for Notification, U D for instituion
 
+## General CRUD Notes:
+- Things related to general CRUD will share similar design to the flow diagram as 19/09/26 implementation

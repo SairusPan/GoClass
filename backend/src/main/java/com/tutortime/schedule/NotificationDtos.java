@@ -1,7 +1,7 @@
 package com.tutortime.schedule;
 
-record NotificationResponse(Long id, String audience, String message, String createdAt) {
+record NotificationResponse(Long id, String audience, String message, boolean read, String createdAt) {
     static NotificationResponse from(NotificationItem n) {
-        return new NotificationResponse(n.getId(), n.getAudience(), n.getMessage(), n.getCreatedAt().toString());
+        return new NotificationResponse(n.getId(), n.getAudience(), n.getMessage(), n.isRead(), n.getCreatedAt().toString());
     }
 }

@@ -5,23 +5,26 @@ import Dashboard from './pages/Dashboard'
 import DataSetup from './pages/DataSetup'
 import ScheduleBoard from './pages/ScheduleBoard'
 import LeaveSubstitute from './pages/LeaveSubstitute'
+import AccountSettings from './pages/AccountSettings'
 import Auth from './pages/Auth'
 import ResetPassword from './pages/ResetPassword'
 import { Badge } from './components/ui'
 
-type Page = 'dashboard' | 'data' | 'schedule' | 'leave'
+type Page = 'dashboard' | 'data' | 'schedule' | 'leave' | 'account'
 
 const NAV: { id: Page; label: string; hint: string }[] = [
   { id: 'dashboard', label: 'Dashboard', hint: 'Overview' },
   { id: 'data', label: 'Teachers & Setup', hint: 'Data entry' },
   { id: 'schedule', label: 'Schedule Builder', hint: 'Suggest + resolve conflicts' },
   { id: 'leave', label: 'Leave & Substitute', hint: 'Cover a teacher absence' },
+  { id: 'account', label: 'Account', hint: 'Centre details' },
 ]
 
 function Shell() {
   const [page, setPage] = useState<Page>('dashboard')
   const { conflicts, notifications, isLoading: schedulingLoading } = useScheduling()
   const { currentUser, logOut } = useAuth()
+  const unreadNotifications = notifications.filter((n) => !n.read).length
 
   if (schedulingLoading) {
     return (
@@ -50,7 +53,7 @@ function Shell() {
               <span className="flex w-full items-center justify-between text-sm font-medium">
                 {item.label}
                 {item.id === 'schedule' && conflicts.length > 0 && <Badge tone="red">{conflicts.length}</Badge>}
-                {item.id === 'leave' && notifications.length > 0 && <Badge tone="blue">{notifications.length}</Badge>}
+                {item.id === 'leave' && unreadNotifications > 0 && <Badge tone="blue">{unreadNotifications}</Badge>}
               </span>
               <span className="text-xs text-slate-400">{item.hint}</span>
             </button>
@@ -75,6 +78,7 @@ function Shell() {
           {page === 'data' && <DataSetup />}
           {page === 'schedule' && <ScheduleBoard />}
           {page === 'leave' && <LeaveSubstitute />}
+          {page === 'account' && <AccountSettings />}
         </div>
       </main>
     </div>

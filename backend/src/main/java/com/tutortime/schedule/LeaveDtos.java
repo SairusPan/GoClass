@@ -31,6 +31,10 @@ record LeaveResponse(
 record FileLeaveRequest(@NotNull Long classId, String reason) {
 }
 
+/** Only the reason is editable — everything else about a leave is decided by resolving it. */
+record UpdateLeaveRequest(String reason) {
+}
+
 record ResolveSubstituteRequest(@NotNull Long teacherId) {
 }
 

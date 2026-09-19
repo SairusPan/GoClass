@@ -47,6 +47,10 @@ public class LeaveService {
         record.setInstitutionId(institutionId);
         record.setClassId(session.getId());
         record.setOriginalTeacherId(session.getTeacherId());
+        // Snapshot the slot now, while it's still untouched — resolving overwrites it in place.
+        record.setOriginalDay(session.getDay());
+        record.setOriginalStart(session.getStart());
+        record.setOriginalRoomId(session.getRoomId());
         record.setReason(request.reason() == null || request.reason().isBlank() ? "No reason given" : request.reason());
         leaveRepository.save(record);
 
@@ -61,6 +65,7 @@ public class LeaveService {
     @Transactional
     public LeaveResponse resolveWithSubstitute(Long institutionId, Long leaveId, ResolveSubstituteRequest request) {
         LeaveRecord record = findLeave(institutionId, leaveId);
+        requireNotCancelled(record);
         ClassSession session = classRepository.findByIdAndInstitutionId(record.getClassId(), institutionId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Class not found."));
 
@@ -85,6 +90,7 @@ public class LeaveService {
     @Transactional
     public LeaveResponse resolveWithReschedule(Long institutionId, Long leaveId, ResolveRescheduleRequest request) {
         LeaveRecord record = findLeave(institutionId, leaveId);
+        requireNotCancelled(record);
         ClassSession session = classRepository.findByIdAndInstitutionId(record.getClassId(), institutionId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Class not found."));
 
@@ -111,9 +117,61 @@ public class LeaveService {
         return LeaveResponse.from(record);
     }
 
+    @Transactional
+    public LeaveResponse update(Long institutionId, Long leaveId, UpdateLeaveRequest request) {
+        LeaveRecord record = findLeave(institutionId, leaveId);
+
+        if (request.reason() != null) {
+            if (request.reason().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "A leave record needs a reason.");
+            }
+            record.setReason(request.reason().trim());
+        }
+
+        return LeaveResponse.from(leaveRepository.save(record));
+    }
+
+    /**
+     * Soft cancel: the row stays as history, but the timetable goes back to how it looked before
+     * anyone tried to cover the absence. Notifications already queued are deliberately left alone —
+     * the substitute's email has been sent, and pretending otherwise would be worse than a stale entry.
+     */
+    @Transactional
+    public LeaveResponse cancel(Long institutionId, Long leaveId) {
+        LeaveRecord record = findLeave(institutionId, leaveId);
+        if ("cancelled".equals(record.getResolution())) {
+            throw new AppException(HttpStatus.CONFLICT, "This leave request was already cancelled.");
+        }
+
+        classRepository.findByIdAndInstitutionId(record.getClassId(), institutionId).ifPresent(session -> {
+            session.setTeacherId(record.getOriginalTeacherId());
+            if (record.getOriginalDay() != null) {
+                session.setDay(record.getOriginalDay());
+                session.setDate(WeekDates.forDay(record.getOriginalDay()));
+            }
+            if (record.getOriginalStart() != null) session.setStart(record.getOriginalStart());
+            if (record.getOriginalRoomId() != null) session.setRoomId(record.getOriginalRoomId());
+            classRepository.save(session);
+        });
+
+        record.setResolution("cancelled");
+        record.setResolvedTeacherId(null);
+        record.setResolvedDay(null);
+        record.setResolvedStart(null);
+        record.setResolvedDate(null);
+
+        return LeaveResponse.from(leaveRepository.save(record));
+    }
+
     private LeaveRecord findLeave(Long institutionId, Long leaveId) {
         return leaveRepository.findByIdAndInstitutionId(leaveId, institutionId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Leave record not found."));
+    }
+
+    private static void requireNotCancelled(LeaveRecord record) {
+        if ("cancelled".equals(record.getResolution())) {
+            throw new AppException(HttpStatus.CONFLICT, "This leave request was cancelled — file a new one instead.");
+        }
     }
 
     private Teacher teacher(Long institutionId, Long teacherId) {

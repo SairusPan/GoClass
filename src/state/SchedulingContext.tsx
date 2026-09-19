@@ -32,7 +32,17 @@ interface SchedulingState {
   updateRoom: (roomId: string, name: string, capacity: number) => Promise<void>
   deleteRoom: (roomId: string) => Promise<void>
   addClass: (c: { name: string; subjectId: string; studentCount: number; durationMinutes: number }) => Promise<void>
+  updateClass: (
+    classId: string,
+    c: { name: string; subjectId: string; studentCount: number; durationMinutes: number },
+  ) => Promise<void>
   deleteClass: (classId: string) => Promise<void>
+  updateLeaveReason: (leaveId: string, reason: string) => Promise<void>
+  cancelLeave: (leaveId: string) => Promise<void>
+  markNotificationRead: (notificationId: string) => Promise<void>
+  markAllNotificationsRead: () => Promise<void>
+  deleteNotification: (notificationId: string) => Promise<void>
+  clearNotifications: () => Promise<void>
   fetchWeekOverrides: (weekStartDate: string) => Promise<ClassOverride[]>
   saveWeekOverride: (
     classId: string,
@@ -94,6 +104,7 @@ interface BackendNotification {
   id: number
   audience: NotificationItem['audience']
   message: string
+  read: boolean
   createdAt: string
 }
 
@@ -167,7 +178,7 @@ function mapLeave(r: BackendLeave): LeaveRecord {
   }
 }
 function mapNotification(n: BackendNotification): NotificationItem {
-  return { id: String(n.id), audience: n.audience, message: n.message, createdAt: n.createdAt }
+  return { id: String(n.id), audience: n.audience, message: n.message, read: n.read, createdAt: n.createdAt }
 }
 
 export function SchedulingProvider({ children }: { children: ReactNode }) {
@@ -365,10 +376,67 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     setClasses((prev) => [...prev, mapClass(created)])
   }
 
+  /** Goes to /details, not the plain PATCH — that one means "assign to a slot" and would
+   * flip an unscheduled class to draft just for a rename. */
+  async function updateClass(
+    classId: string,
+    c: { name: string; subjectId: string; studentCount: number; durationMinutes: number },
+  ) {
+    const updated = await apiFetchJson<BackendClass>(`/api/classes/${classId}/details`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name: c.name,
+        subjectId: Number(c.subjectId),
+        studentCount: c.studentCount,
+        durationMinutes: c.durationMinutes,
+      }),
+    })
+    setClasses((prev) => prev.map((x) => (x.id === classId ? mapClass(updated) : x)))
+  }
+
   async function deleteClass(classId: string) {
     const res = await apiFetch(`/api/classes/${classId}`, { method: 'DELETE' })
     if (!res.ok) throw new Error(await readError(res, 'Could not delete this class.'))
     setClasses((prev) => prev.filter((c) => c.id !== classId))
+  }
+
+  async function updateLeaveReason(leaveId: string, reason: string) {
+    const updated = await apiFetchJson<BackendLeave>(`/api/leave/${leaveId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason }),
+    })
+    setLeaveRecords((prev) => prev.map((l) => (l.id === leaveId ? mapLeave(updated) : l)))
+  }
+
+  /** Puts the class back where it was, so the timetable has to be reloaded too. */
+  async function cancelLeave(leaveId: string) {
+    const updated = await apiFetchJson<BackendLeave>(`/api/leave/${leaveId}/cancel`, { method: 'POST' })
+    setLeaveRecords((prev) => prev.map((l) => (l.id === leaveId ? mapLeave(updated) : l)))
+    await refreshClasses()
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    const updated = await apiFetchJson<BackendNotification>(`/api/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    })
+    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? mapNotification(updated) : n)))
+  }
+
+  async function markAllNotificationsRead() {
+    const list = await apiFetchJson<BackendNotification[]>('/api/notifications/read-all', { method: 'POST' })
+    setNotifications(list.map(mapNotification))
+  }
+
+  async function deleteNotification(notificationId: string) {
+    const res = await apiFetch(`/api/notifications/${notificationId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(await readError(res, 'Could not delete this notification.'))
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
+  }
+
+  async function clearNotifications() {
+    const res = await apiFetch('/api/notifications', { method: 'DELETE' })
+    if (!res.ok) throw new Error(await readError(res, 'Could not clear notifications.'))
+    setNotifications([])
   }
 
   async function fetchWeekOverrides(weekStartDate: string): Promise<ClassOverride[]> {
@@ -425,7 +493,14 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     updateRoom,
     deleteRoom,
     addClass,
+    updateClass,
     deleteClass,
+    updateLeaveReason,
+    cancelLeave,
+    markNotificationRead,
+    markAllNotificationsRead,
+    deleteNotification,
+    clearNotifications,
     fetchWeekOverrides,
     saveWeekOverride,
     clearWeekOverride,

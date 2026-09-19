@@ -4,6 +4,7 @@ import com.tutortime.auth.dto.AuthResponse;
 import com.tutortime.auth.dto.InstitutionResponse;
 import com.tutortime.auth.dto.LoginRequest;
 import com.tutortime.auth.dto.RegisterRequest;
+import com.tutortime.auth.dto.UpdateInstitutionRequest;
 import com.tutortime.common.AppException;
 import com.tutortime.email.EmailService;
 import com.tutortime.schedule.DemoSeedService;
@@ -164,9 +165,40 @@ public class AuthService {
     }
 
     public InstitutionResponse me(Long institutionId) {
-        Institution institution = repository.findById(institutionId)
+        return InstitutionResponse.from(currentInstitution(institutionId));
+    }
+
+    @Transactional
+    public InstitutionResponse updateProfile(Long institutionId, UpdateInstitutionRequest request) {
+        Institution institution = currentInstitution(institutionId);
+
+        if (request.name() != null) {
+            if (request.name().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "Your centre needs a name.");
+            }
+            institution.setName(request.name().trim());
+        }
+        if (request.adminName() != null) {
+            if (request.adminName().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "The admin contact needs a name.");
+            }
+            institution.setAdminName(request.adminName().trim());
+        }
+        // Email is what password-reset links are sent to, so an empty one would lock the
+        // account out of recovery — refuse the blank rather than storing it.
+        if (request.email() != null) {
+            if (request.email().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "You need an email to receive password resets.");
+            }
+            institution.setEmail(request.email().trim().toLowerCase());
+        }
+
+        return InstitutionResponse.from(repository.save(institution));
+    }
+
+    private Institution currentInstitution(Long institutionId) {
+        return repository.findById(institutionId)
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Account no longer exists."));
-        return InstitutionResponse.from(institution);
     }
 
     private AuthResponse issueTokens(Institution institution) {

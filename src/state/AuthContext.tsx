@@ -24,6 +24,7 @@ interface AuthState {
   logInAsDemo: () => Promise<AuthResult>
   forgotPassword: (username: string) => Promise<AuthResult>
   resetPassword: (token: string, newPassword: string) => Promise<AuthResult>
+  updateProfile: (data: { name: string; adminName: string; email: string }) => Promise<AuthResult>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -107,6 +108,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function updateProfile(data: { name: string; adminName: string; email: string }): Promise<AuthResult> {
+    try {
+      const res = await apiFetch('/api/auth/me', { method: 'PATCH', body: JSON.stringify(data) })
+      if (!res.ok) return { ok: false, error: await readError(res, 'Could not save your changes.') }
+      setCurrentUser(toInstitution(await res.json()))
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'Could not reach the server — is the backend running on localhost:8080?' }
+    }
+  }
+
   async function logOut() {
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' })
@@ -162,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ currentUser, isLoading, signUp, logIn, logOut, logInAsDemo, forgotPassword, resetPassword }}
+      value={{ currentUser, isLoading, signUp, logIn, logOut, logInAsDemo, forgotPassword, resetPassword, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

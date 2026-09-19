@@ -1,13 +1,35 @@
+import { useState } from 'react'
 import { useScheduling } from '../state/SchedulingContext'
 import { Badge, Button, Card } from '../components/ui'
 
 export default function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
-  const { classes, teachers, conflicts, leaveRecords, notifications } = useScheduling()
+  const {
+    classes,
+    teachers,
+    conflicts,
+    leaveRecords,
+    notifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+    deleteNotification,
+    clearNotifications,
+  } = useScheduling()
+  const [error, setError] = useState('')
+
+  async function run(action: () => Promise<unknown>) {
+    setError('')
+    try {
+      await action()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong — please try again.')
+    }
+  }
 
   const published = classes.filter((c) => c.status === 'published').length
   const draft = classes.filter((c) => c.status === 'draft').length
   const unscheduled = classes.filter((c) => c.status === 'unscheduled').length
   const pendingLeave = leaveRecords.filter((r) => r.resolution === 'pending').length
+  const unread = notifications.filter((n) => !n.read).length
 
   return (
     <div className="space-y-8">
@@ -60,16 +82,64 @@ export default function Dashboard({ onNavigate }: { onNavigate: (page: string) =
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-sm font-semibold text-slate-900">Recent notifications queued</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-sm font-semibold text-slate-900">
+              Recent notifications queued
+              {unread > 0 && <span className="ml-2 font-normal text-indigo-600">{unread} unread</span>}
+            </h2>
+            {notifications.length > 0 && (
+              <div className="flex shrink-0 gap-3">
+                {unread > 0 && (
+                  <button
+                    onClick={() => run(markAllNotificationsRead)}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    Mark all read
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (confirm('Clear all notifications? This can\'t be undone.')) run(clearNotifications)
+                  }}
+                  className="text-xs font-medium text-red-500 hover:text-red-700"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+          </div>
+          {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
           <div className="mt-3 space-y-2">
             {notifications.length === 0 && (
               <p className="text-sm text-slate-500">No notifications yet — these appear after you resolve a leave request.</p>
             )}
             {notifications.slice(0, 4).map((n) => (
-              <div key={n.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                <Badge tone={n.audience === 'teacher' ? 'blue' : 'slate'}>
-                  {n.audience === 'teacher' ? 'Teacher' : 'Student/Parent'}
-                </Badge>
+              <div
+                key={n.id}
+                className={`rounded-lg px-3 py-2 text-sm ${n.read ? 'bg-slate-50 text-slate-500' : 'bg-indigo-50 text-slate-700'}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <Badge tone={n.audience === 'teacher' ? 'blue' : 'slate'}>
+                    {n.audience === 'teacher' ? 'Teacher' : 'Student/Parent'}
+                  </Badge>
+                  <div className="flex shrink-0 gap-2">
+                    {!n.read && (
+                      <button
+                        onClick={() => run(() => markNotificationRead(n.id))}
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                      >
+                        Mark read
+                      </button>
+                    )}
+                    <button
+                      onClick={() => run(() => deleteNotification(n.id))}
+                      className="text-xs font-medium text-red-500 hover:text-red-700"
+                      aria-label="Delete notification"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
                 <p className="mt-1">{n.message}</p>
               </div>
             ))}

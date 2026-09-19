@@ -490,6 +490,241 @@ class ScheduleFlowIntegrationTest {
     }
 
     @Test
+    void patchingClassDetailsChangesNameSubjectAndSizeWithoutTouchingTheSchedule() throws Exception {
+        String token = registerAndGetAccessToken("classdetails");
+        JsonNode published = findFirst(listAsJson("/api/classes", token), c -> "published".equals(c.get("status").asText()));
+        long classId = published.get("id").asLong();
+        String originalDay = published.get("day").asText();
+        long otherSubjectId = findFirst(listAsJson("/api/subjects", token),
+                s -> s.get("id").asLong() != published.get("subjectId").asLong()).get("id").asLong();
+
+        mockMvc.perform(patch("/api/classes/" + classId + "/details")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed Class\",\"subjectId\":" + otherSubjectId + ",\"studentCount\":19}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Renamed Class"))
+                .andExpect(jsonPath("$.subjectId").value(otherSubjectId))
+                .andExpect(jsonPath("$.studentCount").value(19))
+                // the slot and its status are the assign endpoint's business, not this one's
+                .andExpect(jsonPath("$.day").value(originalDay))
+                .andExpect(jsonPath("$.status").value("published"));
+    }
+
+    @Test
+    void renamingAnUnscheduledClassLeavesItUnscheduled() throws Exception {
+        String token = registerAndGetAccessToken("classnodraft");
+        long subjectId = listAsJson("/api/subjects", token).get(0).get("id").asLong();
+
+        MvcResult created = mockMvc.perform(post("/api/classes")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Typo Clss\",\"subjectId\":" + subjectId + ",\"studentCount\":4}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("unscheduled"))
+                .andReturn();
+        long classId = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(patch("/api/classes/" + classId + "/details")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Typo Class\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Typo Class"))
+                .andExpect(jsonPath("$.status").value("unscheduled"));
+    }
+
+    @Test
+    void aClassCannotBeGivenABlankNameOrAnotherInstitutionsSubject() throws Exception {
+        String tokenA = registerAndGetAccessToken("classvalida");
+        String tokenB = registerAndGetAccessToken("classvalidb");
+        long classIdA = listAsJson("/api/classes", tokenA).get(0).get("id").asLong();
+        long subjectIdB = listAsJson("/api/subjects", tokenB).get(0).get("id").asLong();
+
+        mockMvc.perform(patch("/api/classes/" + classIdA + "/details")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("needs a name")));
+
+        mockMvc.perform(patch("/api/classes/" + classIdA + "/details")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"subjectId\":" + subjectIdB + "}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/classes")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Cross tenant\",\"subjectId\":" + subjectIdB + ",\"studentCount\":5}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void cancellingARescheduledLeavePutsTheClassBackWhereItStarted() throws Exception {
+        String token = registerAndGetAccessToken("leavecancel");
+        JsonNode classes = listAsJson("/api/classes", token);
+        JsonNode session = findFirst(classes, c -> c.get("teacherId").isNumber() && c.get("day").isTextual());
+        long classId = session.get("id").asLong();
+        String originalDay = session.get("day").asText();
+        String originalStart = session.get("start").asText();
+        long originalTeacherId = session.get("teacherId").asLong();
+        long originalRoomId = session.get("roomId").asLong();
+        long otherRoomId = findFirst(listAsJson("/api/rooms", token), r -> r.get("id").asLong() != originalRoomId)
+                .get("id").asLong();
+
+        MvcResult filed = mockMvc.perform(post("/api/leave")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"classId\":" + classId + ",\"reason\":\"Filed by mistake\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long leaveId = objectMapper.readTree(filed.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(post("/api/leave/" + leaveId + "/reschedule")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"day\":\"Sun\",\"start\":\"09:00\",\"roomId\":" + otherRoomId + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resolution").value("rescheduled"));
+
+        mockMvc.perform(post("/api/leave/" + leaveId + "/cancel").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resolution").value("cancelled"))
+                .andExpect(jsonPath("$.resolvedDay").doesNotExist());
+
+        JsonNode restored = findFirst(listAsJson("/api/classes", token), c -> c.get("id").asLong() == classId);
+        assertThat(restored.get("day").asText()).isEqualTo(originalDay);
+        assertThat(restored.get("start").asText()).isEqualTo(originalStart);
+        assertThat(restored.get("teacherId").asLong()).isEqualTo(originalTeacherId);
+        assertThat(restored.get("roomId").asLong()).isEqualTo(originalRoomId);
+
+        // a cancelled request is finished — it can't be re-resolved or cancelled twice
+        mockMvc.perform(post("/api/leave/" + leaveId + "/cancel").header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/leave/" + leaveId + "/substitute")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"teacherId\":" + originalTeacherId + "}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void aLeaveReasonCanBeCorrectedButNotBlanked() throws Exception {
+        String token = registerAndGetAccessToken("leavereason");
+        long classId = findFirst(listAsJson("/api/classes", token), c -> c.get("teacherId").isNumber())
+                .get("id").asLong();
+
+        MvcResult filed = mockMvc.perform(post("/api/leave")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"classId\":" + classId + ",\"reason\":\"Sik leave\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long leaveId = objectMapper.readTree(filed.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(patch("/api/leave/" + leaveId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Sick leave\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reason").value("Sick leave"))
+                .andExpect(jsonPath("$.resolution").value("pending"));
+
+        mockMvc.perform(patch("/api/leave/" + leaveId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"  \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void notificationsStartUnreadAndCanBeMarkedReadThenCleared() throws Exception {
+        String token = registerAndGetAccessToken("notifcheck");
+        long classId = findFirst(listAsJson("/api/classes", token), c -> c.get("teacherId").isNumber())
+                .get("id").asLong();
+
+        // filing leave is what queues a notification in the first place
+        mockMvc.perform(post("/api/leave")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"classId\":" + classId + ",\"reason\":\"Sick leave\"}"))
+                .andExpect(status().isCreated());
+
+        JsonNode queued = listAsJson("/api/notifications", token);
+        assertThat(queued.size()).isEqualTo(1);
+        assertThat(queued.get(0).get("read").asBoolean()).isFalse();
+        long notificationId = queued.get(0).get("id").asLong();
+
+        mockMvc.perform(patch("/api/notifications/" + notificationId + "/read").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.read").value(true));
+
+        mockMvc.perform(post("/api/notifications/read-all").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].read").value(true));
+
+        mockMvc.perform(delete("/api/notifications/" + notificationId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        assertThat(listAsJson("/api/notifications", token).size()).isZero();
+    }
+
+    @Test
+    void clearingNotificationsOnlyEmptiesYourOwnQueue() throws Exception {
+        String tokenA = registerAndGetAccessToken("notiftenanta");
+        String tokenB = registerAndGetAccessToken("notiftenantb");
+
+        for (String token : new String[] {tokenA, tokenB}) {
+            long classId = findFirst(listAsJson("/api/classes", token), c -> c.get("teacherId").isNumber())
+                    .get("id").asLong();
+            mockMvc.perform(post("/api/leave")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"classId\":" + classId + ",\"reason\":\"Sick leave\"}"))
+                    .andExpect(status().isCreated());
+        }
+
+        long notificationIdB = listAsJson("/api/notifications", tokenB).get(0).get("id").asLong();
+        mockMvc.perform(delete("/api/notifications/" + notificationIdB).header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(delete("/api/notifications").header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNoContent());
+        assertThat(listAsJson("/api/notifications", tokenA).size()).isZero();
+        assertThat(listAsJson("/api/notifications", tokenB).size()).isEqualTo(1);
+    }
+
+    @Test
+    void institutionProfileCanBeEditedButUsernameIsNotAccepted() throws Exception {
+        String token = registerAndGetAccessToken("profilecheck");
+
+        mockMvc.perform(patch("/api/auth/me")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed College\",\"email\":\"NEW@Example.COM\",\"username\":\"hacked\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Renamed College"))
+                .andExpect(jsonPath("$.email").value("new@example.com"))
+                .andExpect(jsonPath("$.username").value("profilecheck"))
+                // adminName wasn't sent, so it must be untouched
+                .andExpect(jsonPath("$.adminName").value("Admin profilecheck"));
+
+        mockMvc.perform(patch("/api/auth/me")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/auth/me")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"not-an-email\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/auth/me").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"x\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void scheduleEndpointsRejectRequestsWithNoToken() throws Exception {
         mockMvc.perform(get("/api/teachers")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/classes")).andExpect(status().isUnauthorized());

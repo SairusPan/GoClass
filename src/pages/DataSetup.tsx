@@ -1,7 +1,16 @@
 import { useState, type ReactNode } from 'react'
 import { useScheduling } from '../state/SchedulingContext'
 import { Badge, Button, Card } from '../components/ui'
-import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type Availability, type Day, type Teacher } from '../types'
+import {
+  DAYS,
+  DAY_LABELS,
+  DURATION_OPTIONS,
+  TIME_SLOTS,
+  type Availability,
+  type ClassGroup,
+  type Day,
+  type Teacher,
+} from '../types'
 
 type Tab = 'teachers' | 'subjects' | 'rooms' | 'classes'
 
@@ -498,8 +507,9 @@ function RoomsTab() {
 }
 
 function ClassesTab() {
-  const { classes, subjects, addClass, deleteClass } = useScheduling()
+  const { classes, subjects, addClass, updateClass, deleteClass } = useScheduling()
   const { error, clearError, run } = useActionError()
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [studentCount, setStudentCount] = useState(6)
@@ -510,6 +520,33 @@ function ClassesTab() {
     return subjects.find((s) => s.id === id)?.name ?? id
   }
 
+  function reset() {
+    setEditingId(null)
+    setName('')
+    setSubjectId(subjects[0]?.id ?? '')
+    setStudentCount(6)
+    setDurationMinutes(60)
+  }
+
+  function startEdit(c: ClassGroup) {
+    clearError()
+    setEditingId(c.id)
+    setName(c.name)
+    setSubjectId(c.subjectId)
+    setStudentCount(c.studentCount)
+    setDurationMinutes(c.durationMinutes)
+  }
+
+  function submit() {
+    if (!name.trim() || !subjectId) return
+    run(async () => {
+      const payload = { name: name.trim(), subjectId, studentCount, durationMinutes }
+      if (editingId) await updateClass(editingId, payload)
+      else await addClass(payload)
+      reset()
+    })
+  }
+
   const query = search.trim().toLowerCase()
   const filteredClasses = classes.filter(
     (c) => !query || c.name.toLowerCase().includes(query) || subjectName(c.subjectId).toLowerCase().includes(query),
@@ -518,7 +555,7 @@ function ClassesTab() {
   return (
     <div className="space-y-4">
       <Card className="flex flex-wrap items-end gap-2 p-4">
-        <Field label="Class name">
+        <Field label={editingId ? 'Edit class name' : 'Class name'}>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -561,18 +598,14 @@ function ClassesTab() {
             ))}
           </select>
         </Field>
-        <Button
-          onClick={() => {
-            if (!name.trim() || !subjectId) return
-            run(async () => {
-              await addClass({ name: name.trim(), subjectId, studentCount, durationMinutes })
-              setName('')
-            })
-          }}
-          disabled={!subjectId}
-        >
-          Add class
+        <Button onClick={submit} disabled={!name.trim() || !subjectId}>
+          {editingId ? 'Save changes' : 'Add class'}
         </Button>
+        {editingId && (
+          <Button variant="secondary" onClick={reset}>
+            Cancel
+          </Button>
+        )}
       </Card>
 
       {error && <ErrorBanner message={error} onDismiss={clearError} />}
@@ -612,12 +645,18 @@ function ClassesTab() {
                     {c.status}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="whitespace-nowrap px-4 py-3 text-right">
+                  <button
+                    onClick={() => startEdit(c)}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    Edit
+                  </button>
                   <button
                     onClick={() => {
                       if (confirm(`Delete "${c.name}"? This can't be undone.`)) run(() => deleteClass(c.id))
                     }}
-                    className="text-xs font-medium text-red-500 hover:text-red-700"
+                    className="ml-3 text-xs font-medium text-red-500 hover:text-red-700"
                   >
                     Delete
                   </button>

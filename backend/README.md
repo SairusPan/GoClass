@@ -74,7 +74,9 @@ automatically (`ddl-auto: update`) — no manual migration step yet.
 ## API
 
 **Auth** (`/api/auth`) — `register` (now requires `email`), `login`, `refresh`, `forgot-password`,
-`reset-password`, `logout` (auth required), `me` (auth required).
+`reset-password`, `logout` (auth required), `GET/PATCH me` (auth required). `PATCH /me` edits
+`name`/`adminName`/`email` only — `username` is the login credential and `password` has its own
+reset flow, so neither is accepted here.
 
 **Scheduling** (all require `Authorization: Bearer <accessToken>`, all scoped to the caller's institution):
 
@@ -86,14 +88,42 @@ automatically (`ddl-auto: update`) — no manual migration step yet.
 | PATCH/DELETE | `/api/subjects/{id}` | partial update; delete refused while still referenced (see below) |
 | GET/POST | `/api/rooms` | |
 | PATCH/DELETE | `/api/rooms/{id}` | partial update; delete refused while still referenced (see below) |
-| GET | `/api/classes` | |
-| PATCH | `/api/classes/{id}` | partial update — `teacherId`/`roomId`/`day`/`start`/`status`, any subset |
+| GET/POST | `/api/classes` | |
+| PATCH | `/api/classes/{id}` | **scheduling** — `teacherId`/`roomId`/`day`/`start`/`status`, any subset |
+| PATCH | `/api/classes/{id}/details` | **description** — `name`/`subjectId`/`studentCount`/`durationMinutes` |
+| DELETE | `/api/classes/{id}` | cascades to that class's one-week overrides |
 | POST | `/api/classes/{id}/publish` | |
 | POST | `/api/classes/publish-drafts` | publishes every draft, returns the full class list |
 | GET/POST | `/api/leave` | file a leave request |
+| PATCH | `/api/leave/{id}` | `{reason}` — the only editable field |
 | POST | `/api/leave/{id}/substitute` | `{teacherId}` |
 | POST | `/api/leave/{id}/reschedule` | `{day, start, roomId}` |
+| POST | `/api/leave/{id}/cancel` | soft cancel, restores the timetable (see below) |
 | GET | `/api/notifications` | |
+| PATCH | `/api/notifications/{id}/read` | |
+| POST | `/api/notifications/read-all` | returns the full list |
+| DELETE | `/api/notifications/{id}` | |
+| DELETE | `/api/notifications` | clears the caller's whole queue |
+
+### Why a class has two PATCH routes
+
+`PATCH /api/classes/{id}` means "put this class in a slot", and it promotes an `unscheduled` class
+to `draft` as a side effect. Fixing a typo in a class name shouldn't do that, so the descriptive
+fields live on `/details` instead of sharing the route.
+
+`subjectId` is checked against the caller's own subjects on both create and update — it arrives
+straight from the client, so an unchecked id would let a class point at another tenant's subject.
+
+### Cancelling a leave request
+
+`POST /api/leave/{id}/cancel` is a soft cancel: `resolution` becomes `cancelled` and the row stays
+as history. Resolving writes directly onto the `ClassSession`, so `LeaveRecord` snapshots
+`originalDay`/`originalStart`/`originalRoomId` at file time and cancelling restores them along with
+`originalTeacherId` — otherwise a cancelled reschedule would leave the class stranded in its
+make-up slot. Notifications already queued are **not** retracted; the substitute's email has been
+sent, and deleting the record would be pretending otherwise. Rows filed before those columns
+existed have them null, in which case cancelling restores the teacher and leaves the slot alone.
+A cancelled request is terminal — resolving or cancelling it again returns `409`.
 
 ### Deleting teachers, subjects and rooms
 
@@ -118,7 +148,7 @@ Java. This backend's job is durable, tenant-isolated storage, not the algorithm.
 
 ## Tests
 
-`mvn test` runs 30 integration tests against an in-memory H2 database (no MySQL needed):
+`mvn test` runs 38 integration tests against an in-memory H2 database (no MySQL needed):
 
 - `AuthFlowIntegrationTest` — register/login/refresh-rotation/logout/duplicate-username/wrong-password,
   plus forgot-password (silent on unknown username), reset-password (rejects invalid/expired
@@ -128,7 +158,10 @@ Java. This backend's job is durable, tenant-isolated storage, not the algorithm.
   guessing its id** (404, not 403 — it doesn't even leak that the row exists), assign→draft,
   file-leave→substitute→notifications end to end, and the teacher/subject/room delete guards —
   including the two-stage subject case where clearing its classes still isn't enough because a
-  teacher continues to list it.
+  teacher continues to list it. Also covers the two class PATCH routes staying out of each
+  other's way (renaming an `unscheduled` class leaves it unscheduled), cross-tenant `subjectId`
+  rejection, cancelling a *rescheduled* leave putting the class back on its original day, start,
+  room and teacher, and notifications being unread by default and clearable per-tenant.
 
 ## Deploying
 

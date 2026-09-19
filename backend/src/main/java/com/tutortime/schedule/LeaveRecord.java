@@ -29,7 +29,19 @@ public class LeaveRecord {
 
     private String reason;
 
-    /** pending | substitute | rescheduled */
+    /**
+     * Where the class sat before anyone tried to cover this absence. Resolving writes straight
+     * onto the ClassSession, so without this snapshot a cancelled leave could restore the teacher
+     * (originalTeacherId) but never the slot. Null on rows filed before these columns existed —
+     * cancelling those restores what it can and leaves the rest alone.
+     */
+    private String originalDay;
+
+    private String originalStart;
+
+    private Long originalRoomId;
+
+    /** pending | substitute | rescheduled | cancelled */
     @Column(nullable = false, length = 16)
     private String resolution = "pending";
 
@@ -78,6 +90,30 @@ public class LeaveRecord {
 
     public void setReason(String reason) {
         this.reason = reason;
+    }
+
+    public String getOriginalDay() {
+        return originalDay;
+    }
+
+    public void setOriginalDay(String originalDay) {
+        this.originalDay = originalDay;
+    }
+
+    public String getOriginalStart() {
+        return originalStart;
+    }
+
+    public void setOriginalStart(String originalStart) {
+        this.originalStart = originalStart;
+    }
+
+    public Long getOriginalRoomId() {
+        return originalRoomId;
+    }
+
+    public void setOriginalRoomId(Long originalRoomId) {
+        this.originalRoomId = originalRoomId;
     }
 
     public String getResolution() {

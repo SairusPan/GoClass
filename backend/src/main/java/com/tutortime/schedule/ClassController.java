@@ -41,6 +41,11 @@ public class ClassController {
         return service.assign(CurrentInstitution.id(request), id, body);
     }
 
+    @PatchMapping("/{id}/details")
+    public ClassResponse update(HttpServletRequest request, @PathVariable Long id, @Valid @RequestBody UpdateClassRequest body) {
+        return service.update(CurrentInstitution.id(request), id, body);
+    }
+
     @PostMapping("/{id}/publish")
     public ClassResponse publish(HttpServletRequest request, @PathVariable Long id) {
         return service.publish(CurrentInstitution.id(request), id);
