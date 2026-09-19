@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useScheduling } from '../state/SchedulingContext'
 import { Badge, Button, Card } from '../components/ui'
-import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type Availability, type Day } from '../types'
+import { DAYS, DAY_LABELS, DURATION_OPTIONS, TIME_SLOTS, type Availability, type Day, type Teacher } from '../types'
 
 type Tab = 'teachers' | 'subjects' | 'rooms' | 'classes'
 
@@ -41,8 +41,10 @@ export default function DataSetup() {
 }
 
 function TeachersTab() {
-  const { teachers, subjects, addTeacher } = useScheduling()
+  const { teachers, subjects, addTeacher, updateTeacher, deleteTeacher } = useScheduling()
+  const { error, clearError, run } = useActionError()
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -61,7 +63,12 @@ function TeachersTab() {
     setAvailability((prev) => [...prev, { day: availDay, start: availStart, end: availEnd }])
   }
 
+  function removeAvailabilityRow(index: number) {
+    setAvailability((prev) => prev.filter((_, i) => i !== index))
+  }
+
   function resetForm() {
+    setEditingId(null)
     setName('')
     setPhone('')
     setEmail('')
@@ -70,10 +77,34 @@ function TeachersTab() {
     setShowForm(false)
   }
 
+  function startEdit(t: Teacher) {
+    clearError()
+    setEditingId(t.id)
+    setName(t.name)
+    setPhone(t.phone)
+    setEmail(t.email)
+    setSelectedSubjects(t.subjects)
+    setAvailability(t.availability)
+    setShowForm(true)
+  }
+
+  const canSubmit = Boolean(name.trim()) && selectedSubjects.length > 0 && availability.length > 0
+
   function submit() {
-    if (!name.trim() || selectedSubjects.length === 0 || availability.length === 0) return
-    addTeacher({ name: name.trim(), phone, email: email.trim(), subjects: selectedSubjects, availability })
-    resetForm()
+    if (!canSubmit) return
+    const payload = { name: name.trim(), phone, email: email.trim(), subjects: selectedSubjects, availability }
+    // Only clear the form once the write actually landed — a rejected save should leave
+    // everything the user typed on screen next to the reason it failed.
+    run(async () => {
+      if (editingId) await updateTeacher(editingId, payload)
+      else await addTeacher(payload)
+      resetForm()
+    })
+  }
+
+  function remove(t: Teacher) {
+    if (!confirm(`Delete ${t.name}? This can't be undone.`)) return
+    run(() => deleteTeacher(t.id))
   }
 
   const query = search.trim().toLowerCase()
@@ -93,11 +124,16 @@ function TeachersTab() {
           placeholder="Search by name or subject…"
           className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
-        <Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : '+ Add teacher'}</Button>
+        <Button onClick={() => (showForm ? resetForm() : setShowForm(true))}>
+          {showForm ? 'Cancel' : '+ Add teacher'}
+        </Button>
       </div>
+
+      {error && <ErrorBanner message={error} onDismiss={clearError} />}
 
       {showForm && (
         <Card className="space-y-4 p-5">
+          {editingId && <h2 className="text-sm font-semibold text-slate-900">Editing {name || 'teacher'}</h2>}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Name">
               <input
@@ -188,17 +224,19 @@ function TeachersTab() {
             {availability.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {availability.map((a, i) => (
-                  <Badge key={i} tone="blue">
-                    {DAY_LABELS[a.day]} {a.start}–{a.end}
-                  </Badge>
+                  <button key={i} onClick={() => removeAvailabilityRow(i)} title="Remove this window">
+                    <Badge tone="blue">
+                      {DAY_LABELS[a.day]} {a.start}–{a.end} ×
+                    </Badge>
+                  </button>
                 ))}
               </div>
             )}
           </Field>
 
           <div className="flex gap-2 pt-2">
-            <Button onClick={submit} disabled={!name.trim() || selectedSubjects.length === 0 || availability.length === 0}>
-              Save teacher
+            <Button onClick={submit} disabled={!canSubmit}>
+              {editingId ? 'Save changes' : 'Save teacher'}
             </Button>
             <Button variant="secondary" onClick={resetForm}>
               Cancel
@@ -207,8 +245,10 @@ function TeachersTab() {
         </Card>
       )}
 
-      <Card className="overflow-hidden">
-        <table className="w-full text-left text-sm">
+      {/* Wide enough with the actions column that it can outgrow its card — scroll rather than
+        * clip, or Edit/Delete become unreachable on a narrow window. */}
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[820px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Name</th>
@@ -216,6 +256,7 @@ function TeachersTab() {
               <th className="px-4 py-3">Availability</th>
               <th className="px-4 py-3">Phone</th>
               <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -242,6 +283,20 @@ function TeachersTab() {
                 </td>
                 <td className="px-4 py-3 text-slate-500">{t.phone}</td>
                 <td className="px-4 py-3 text-slate-500">{t.email || <span className="text-slate-300">—</span>}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right">
+                  <button
+                    onClick={() => startEdit(t)}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => remove(t)}
+                    className="ml-3 text-xs font-medium text-red-500 hover:text-red-700"
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -255,13 +310,29 @@ function TeachersTab() {
 }
 
 function SubjectsTab() {
-  const { subjects, addSubject } = useScheduling()
+  const { subjects, addSubject, updateSubject, deleteSubject } = useScheduling()
+  const { error, clearError, run } = useActionError()
   const [name, setName] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  function reset() {
+    setEditingId(null)
+    setName('')
+  }
+
+  function submit() {
+    if (!name.trim()) return
+    run(async () => {
+      if (editingId) await updateSubject(editingId, name.trim())
+      else await addSubject(name.trim())
+      reset()
+    })
+  }
 
   return (
     <div className="space-y-4">
-      <Card className="flex items-end gap-2 p-4">
-        <Field label="New subject name">
+      <Card className="flex flex-wrap items-end gap-2 p-4">
+        <Field label={editingId ? 'Rename subject' : 'New subject name'}>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -269,38 +340,88 @@ function SubjectsTab() {
             placeholder="e.g. VCE Further Maths"
           />
         </Field>
-        <Button
-          onClick={() => {
-            if (!name.trim()) return
-            addSubject(name.trim())
-            setName('')
-          }}
-        >
-          Add subject
+        <Button onClick={submit} disabled={!name.trim()}>
+          {editingId ? 'Save changes' : 'Add subject'}
         </Button>
+        {editingId && (
+          <Button variant="secondary" onClick={reset}>
+            Cancel
+          </Button>
+        )}
       </Card>
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-2">
-          {subjects.map((s) => (
-            <Badge key={s.id} tone="slate">
-              {s.name}
-            </Badge>
-          ))}
-        </div>
+
+      {error && <ErrorBanner message={error} onDismiss={clearError} />}
+
+      <Card className="overflow-hidden">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Subject</th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {subjects.map((s) => (
+              <tr key={s.id}>
+                <td className="px-4 py-3 font-medium text-slate-800">{s.name}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right">
+                  <button
+                    onClick={() => {
+                      clearError()
+                      setEditingId(s.id)
+                      setName(s.name)
+                    }}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${s.name}"? This can't be undone.`)) run(() => deleteSubject(s.id))
+                    }}
+                    className="ml-3 text-xs font-medium text-red-500 hover:text-red-700"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {subjects.length === 0 && (
+          <p className="px-4 py-6 text-center text-sm text-slate-400">No subjects yet — add one above.</p>
+        )}
       </Card>
     </div>
   )
 }
 
 function RoomsTab() {
-  const { rooms, addRoom } = useScheduling()
+  const { rooms, addRoom, updateRoom, deleteRoom } = useScheduling()
+  const { error, clearError, run } = useActionError()
   const [name, setName] = useState('')
   const [capacity, setCapacity] = useState(8)
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  function reset() {
+    setEditingId(null)
+    setName('')
+    setCapacity(8)
+  }
+
+  function submit() {
+    if (!name.trim()) return
+    run(async () => {
+      if (editingId) await updateRoom(editingId, name.trim(), capacity)
+      else await addRoom(name.trim(), capacity)
+      reset()
+    })
+  }
 
   return (
     <div className="space-y-4">
-      <Card className="flex items-end gap-2 p-4">
-        <Field label="Room name">
+      <Card className="flex flex-wrap items-end gap-2 p-4">
+        <Field label={editingId ? 'Edit room name' : 'Room name'}>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -317,22 +438,25 @@ function RoomsTab() {
             className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
         </Field>
-        <Button
-          onClick={() => {
-            if (!name.trim()) return
-            addRoom(name.trim(), capacity)
-            setName('')
-          }}
-        >
-          Add room
+        <Button onClick={submit} disabled={!name.trim()}>
+          {editingId ? 'Save changes' : 'Add room'}
         </Button>
+        {editingId && (
+          <Button variant="secondary" onClick={reset}>
+            Cancel
+          </Button>
+        )}
       </Card>
+
+      {error && <ErrorBanner message={error} onDismiss={clearError} />}
+
       <Card className="overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Room</th>
               <th className="px-4 py-3">Capacity</th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -340,10 +464,34 @@ function RoomsTab() {
               <tr key={r.id}>
                 <td className="px-4 py-3 font-medium text-slate-800">{r.name}</td>
                 <td className="px-4 py-3 text-slate-600">{r.capacity} seats</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right">
+                  <button
+                    onClick={() => {
+                      clearError()
+                      setEditingId(r.id)
+                      setName(r.name)
+                      setCapacity(r.capacity)
+                    }}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete "${r.name}"? This can't be undone.`)) run(() => deleteRoom(r.id))
+                    }}
+                    className="ml-3 text-xs font-medium text-red-500 hover:text-red-700"
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {rooms.length === 0 && (
+          <p className="px-4 py-6 text-center text-sm text-slate-400">No rooms yet — add one above.</p>
+        )}
       </Card>
     </div>
   )
@@ -351,6 +499,7 @@ function RoomsTab() {
 
 function ClassesTab() {
   const { classes, subjects, addClass, deleteClass } = useScheduling()
+  const { error, clearError, run } = useActionError()
   const [name, setName] = useState('')
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [studentCount, setStudentCount] = useState(6)
@@ -368,7 +517,7 @@ function ClassesTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="flex items-end gap-2 p-4">
+      <Card className="flex flex-wrap items-end gap-2 p-4">
         <Field label="Class name">
           <input
             value={name}
@@ -415,14 +564,18 @@ function ClassesTab() {
         <Button
           onClick={() => {
             if (!name.trim() || !subjectId) return
-            addClass({ name: name.trim(), subjectId, studentCount, durationMinutes })
-            setName('')
+            run(async () => {
+              await addClass({ name: name.trim(), subjectId, studentCount, durationMinutes })
+              setName('')
+            })
           }}
           disabled={!subjectId}
         >
           Add class
         </Button>
       </Card>
+
+      {error && <ErrorBanner message={error} onDismiss={clearError} />}
 
       {subjects.length === 0 && (
         <p className="text-sm text-slate-500">Add a subject first (Subjects tab) before creating classes.</p>
@@ -435,8 +588,8 @@ function ClassesTab() {
         className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm"
       />
 
-      <Card className="overflow-hidden">
-        <table className="w-full text-left text-sm">
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Name</th>
@@ -462,7 +615,7 @@ function ClassesTab() {
                 <td className="px-4 py-3 text-right">
                   <button
                     onClick={() => {
-                      if (confirm(`Delete "${c.name}"? This can't be undone.`)) deleteClass(c.id)
+                      if (confirm(`Delete "${c.name}"? This can't be undone.`)) run(() => deleteClass(c.id))
                     }}
                     className="text-xs font-medium text-red-500 hover:text-red-700"
                   >
@@ -487,5 +640,36 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
       {children}
     </label>
+  )
+}
+
+/**
+ * The backend refuses a delete with a 409 explaining exactly what still references the row
+ * ("This subject is still used by 3 classes…"). Without this the rejected promise would vanish
+ * into the console and the button would look like it simply did nothing.
+ */
+function useActionError() {
+  const [error, setError] = useState('')
+
+  async function run(action: () => Promise<unknown>) {
+    setError('')
+    try {
+      await action()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong — please try again.')
+    }
+  }
+
+  return { error, clearError: () => setError(''), run }
+}
+
+function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <Card className="flex items-start justify-between gap-4 border-red-200 bg-red-50 p-3">
+      <p className="text-sm text-red-700">{message}</p>
+      <button onClick={onDismiss} className="shrink-0 text-xs font-medium text-red-500 hover:text-red-700">
+        Dismiss
+      </button>
+    </Card>
   )
 }

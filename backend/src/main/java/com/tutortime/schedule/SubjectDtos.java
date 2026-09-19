@@ -10,3 +10,7 @@ record SubjectResponse(Long id, String name) {
 
 record CreateSubjectRequest(@NotBlank String name) {
 }
+
+/** Partial update — a null field means "leave this one alone", matching AssignClassRequest. */
+record UpdateSubjectRequest(String name) {
+}

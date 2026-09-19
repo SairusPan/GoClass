@@ -15,4 +15,8 @@ public interface ClassOverrideRepository extends JpaRepository<ClassOverride, Lo
     List<ClassOverride> findByClassSessionId(Long classSessionId);
 
     void deleteByClassSessionId(Long classSessionId);
+
+    long countByInstitutionIdAndTeacherId(Long institutionId, Long teacherId);
+
+    long countByInstitutionIdAndRoomId(Long institutionId, Long roomId);
 }

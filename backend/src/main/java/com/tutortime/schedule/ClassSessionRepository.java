@@ -11,4 +11,10 @@ public interface ClassSessionRepository extends JpaRepository<ClassSession, Long
     Optional<ClassSession> findByIdAndInstitutionId(Long id, Long institutionId);
 
     List<ClassSession> findByInstitutionIdAndStatus(Long institutionId, String status);
+
+    long countByInstitutionIdAndSubjectId(Long institutionId, Long subjectId);
+
+    long countByInstitutionIdAndTeacherId(Long institutionId, Long teacherId);
+
+    long countByInstitutionIdAndRoomId(Long institutionId, Long roomId);
 }

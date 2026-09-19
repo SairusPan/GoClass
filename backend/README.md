@@ -81,8 +81,11 @@ automatically (`ddl-auto: update`) — no manual migration step yet.
 | Method | Path | Notes |
 |---|---|---|
 | GET/POST | `/api/teachers` | |
+| PATCH/DELETE | `/api/teachers/{id}` | partial update; delete refused while still referenced (see below) |
 | GET/POST | `/api/subjects` | |
+| PATCH/DELETE | `/api/subjects/{id}` | partial update; delete refused while still referenced (see below) |
 | GET/POST | `/api/rooms` | |
+| PATCH/DELETE | `/api/rooms/{id}` | partial update; delete refused while still referenced (see below) |
 | GET | `/api/classes` | |
 | PATCH | `/api/classes/{id}` | partial update — `teacherId`/`roomId`/`day`/`start`/`status`, any subset |
 | POST | `/api/classes/{id}/publish` | |
@@ -92,6 +95,22 @@ automatically (`ddl-auto: update`) — no manual migration step yet.
 | POST | `/api/leave/{id}/reschedule` | `{day, start, roomId}` |
 | GET | `/api/notifications` | |
 
+### Deleting teachers, subjects and rooms
+
+Deletes are refused with a `409` and a message naming what's in the way, rather than cascading
+or quietly nulling references out:
+
+- **Teacher** — blocked while assigned to any class or any one-week override. Leave records also
+  carry teacher ids, but those are historical; counting them would make anyone who ever took a
+  day off permanently undeletable, so a resolved record just shows a dash for the name.
+- **Room** — blocked while used by any class or one-week override.
+- **Subject** — blocked while any class uses it *or* any teacher lists it. `ClassSession.subjectId`
+  is non-null, so unlike a teacher or room there's no "unassign but keep the class" fallback —
+  the only alternative to blocking would be deleting someone's classes for them.
+
+`PATCH` is partial: a field left out of the body is untouched, matching `/api/classes/{id}`. On a
+teacher, a supplied `subjectIds`/`availability` replaces the whole list rather than merging into it.
+
 The actual scheduling *logic* (conflict detection, suggestion generation, substitute matching,
 reschedule search) stays on the frontend (`src/utils/scheduling.ts`, unit-tested there) — it's
 pure filtering over data fetched from these endpoints, not something worth re-implementing in
@@ -99,7 +118,7 @@ Java. This backend's job is durable, tenant-isolated storage, not the algorithm.
 
 ## Tests
 
-`mvn test` runs 18 integration tests against an in-memory H2 database (no MySQL needed):
+`mvn test` runs 30 integration tests against an in-memory H2 database (no MySQL needed):
 
 - `AuthFlowIntegrationTest` — register/login/refresh-rotation/logout/duplicate-username/wrong-password,
   plus forgot-password (silent on unknown username), reset-password (rejects invalid/expired
@@ -107,7 +126,9 @@ Java. This backend's job is durable, tenant-isolated storage, not the algorithm.
 - `ScheduleFlowIntegrationTest` — demo seeding counts, the deliberate seeded conflict, **two
   institutions never share a teacher row**, **institution B cannot PATCH institution A's class by
   guessing its id** (404, not 403 — it doesn't even leak that the row exists), assign→draft,
-  file-leave→substitute→notifications end to end.
+  file-leave→substitute→notifications end to end, and the teacher/subject/room delete guards —
+  including the two-stage subject case where clearing its classes still isn't enough because a
+  teacher continues to list it.
 
 ## Deploying
 

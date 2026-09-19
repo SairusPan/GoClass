@@ -20,8 +20,17 @@ interface SchedulingState {
   resolveWithSubstitute: (leaveId: string, teacherId: string) => Promise<void>
   resolveWithReschedule: (leaveId: string, day: Day, start: string, roomId: string) => Promise<void>
   addTeacher: (t: { name: string; phone: string; email: string; subjects: string[]; availability: Availability[] }) => Promise<void>
+  updateTeacher: (
+    teacherId: string,
+    t: { name: string; phone: string; email: string; subjects: string[]; availability: Availability[] },
+  ) => Promise<void>
+  deleteTeacher: (teacherId: string) => Promise<void>
   addSubject: (name: string) => Promise<void>
+  updateSubject: (subjectId: string, name: string) => Promise<void>
+  deleteSubject: (subjectId: string) => Promise<void>
   addRoom: (name: string, capacity: number) => Promise<void>
+  updateRoom: (roomId: string, name: string, capacity: number) => Promise<void>
+  deleteRoom: (roomId: string) => Promise<void>
   addClass: (c: { name: string; subjectId: string; studentCount: number; durationMinutes: number }) => Promise<void>
   deleteClass: (classId: string) => Promise<void>
   fetchWeekOverrides: (weekStartDate: string) => Promise<ClassOverride[]>
@@ -278,14 +287,69 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     setTeachers((prev) => [...prev, mapTeacher(created)])
   }
 
+  // The edit forms always hand back every field, so these send a full body even though the
+  // backend treats PATCH as partial.
+  async function updateTeacher(
+    teacherId: string,
+    t: { name: string; phone: string; email: string; subjects: string[]; availability: Availability[] },
+  ) {
+    const updated = await apiFetchJson<BackendTeacher>(`/api/teachers/${teacherId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name: t.name,
+        phone: t.phone,
+        email: t.email || null,
+        subjectIds: t.subjects.map(Number),
+        availability: t.availability,
+      }),
+    })
+    setTeachers((prev) => prev.map((x) => (x.id === teacherId ? mapTeacher(updated) : x)))
+  }
+
+  // A delete only gets this far if the backend found nothing still pointing at the row, so
+  // dropping it from local state is enough — nothing else on screen can have gone stale.
+  async function deleteTeacher(teacherId: string) {
+    const res = await apiFetch(`/api/teachers/${teacherId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(await readError(res, 'Could not delete this teacher.'))
+    setTeachers((prev) => prev.filter((t) => t.id !== teacherId))
+  }
+
   async function addSubject(name: string) {
     const created = await apiFetchJson<BackendSubject>('/api/subjects', { method: 'POST', body: JSON.stringify({ name }) })
     setSubjects((prev) => [...prev, mapSubject(created)])
   }
 
+  async function updateSubject(subjectId: string, name: string) {
+    const updated = await apiFetchJson<BackendSubject>(`/api/subjects/${subjectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    })
+    setSubjects((prev) => prev.map((s) => (s.id === subjectId ? mapSubject(updated) : s)))
+  }
+
+  async function deleteSubject(subjectId: string) {
+    const res = await apiFetch(`/api/subjects/${subjectId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(await readError(res, 'Could not delete this subject.'))
+    setSubjects((prev) => prev.filter((s) => s.id !== subjectId))
+  }
+
   async function addRoom(name: string, capacity: number) {
     const created = await apiFetchJson<BackendRoom>('/api/rooms', { method: 'POST', body: JSON.stringify({ name, capacity }) })
     setRooms((prev) => [...prev, mapRoom(created)])
+  }
+
+  async function updateRoom(roomId: string, name: string, capacity: number) {
+    const updated = await apiFetchJson<BackendRoom>(`/api/rooms/${roomId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name, capacity }),
+    })
+    setRooms((prev) => prev.map((r) => (r.id === roomId ? mapRoom(updated) : r)))
+  }
+
+  async function deleteRoom(roomId: string) {
+    const res = await apiFetch(`/api/rooms/${roomId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(await readError(res, 'Could not delete this room.'))
+    setRooms((prev) => prev.filter((r) => r.id !== roomId))
   }
 
   async function addClass(c: { name: string; subjectId: string; studentCount: number; durationMinutes: number }) {
@@ -352,8 +416,14 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     resolveWithSubstitute,
     resolveWithReschedule,
     addTeacher,
+    updateTeacher,
+    deleteTeacher,
     addSubject,
+    updateSubject,
+    deleteSubject,
     addRoom,
+    updateRoom,
+    deleteRoom,
     addClass,
     deleteClass,
     fetchWeekOverrides,

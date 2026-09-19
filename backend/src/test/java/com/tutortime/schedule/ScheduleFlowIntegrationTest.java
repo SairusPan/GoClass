@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -340,6 +341,152 @@ class ScheduleFlowIntegrationTest {
                 .andExpect(status().isNoContent());
 
         assertThat(listAsJson("/api/class-overrides?week=" + week, token).size()).isEqualTo(0);
+    }
+
+    @Test
+    void patchingATeacherReplacesOnlyTheFieldsItSends() throws Exception {
+        String token = registerAndGetAccessToken("teacherpatch");
+        long teacherId = findFirst(listAsJson("/api/teachers", token), t -> "Sarah Chen".equals(t.get("name").asText()))
+                .get("id").asLong();
+        long englishId = findFirst(listAsJson("/api/subjects", token), s -> "English".equals(s.get("name").asText()))
+                .get("id").asLong();
+
+        mockMvc.perform(patch("/api/teachers/" + teacherId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Sarah Chen-Lee","subjectIds":[%d],"availability":[{"day":"Fri","start":"09:00","end":"12:00"}]}
+                                """.formatted(englishId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Sarah Chen-Lee"))
+                // phone wasn't in the body, so it has to survive untouched
+                .andExpect(jsonPath("$.phone").value("0412 000 001"))
+                // both element collections get replaced wholesale, not merged into
+                .andExpect(jsonPath("$.subjectIds.length()").value(1))
+                .andExpect(jsonPath("$.subjectIds[0]").value(englishId))
+                .andExpect(jsonPath("$.availability.length()").value(1))
+                .andExpect(jsonPath("$.availability[0].day").value("Fri"));
+    }
+
+    @Test
+    void patchingRejectsABlankNameOrAnEmptySubjectList() throws Exception {
+        String token = registerAndGetAccessToken("patchvalidation");
+        long teacherId = listAsJson("/api/teachers", token).get(0).get("id").asLong();
+        long roomId = listAsJson("/api/rooms", token).get(0).get("id").asLong();
+
+        mockMvc.perform(patch("/api/teachers/" + teacherId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(patch("/api/teachers/" + teacherId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"subjectIds\":[]}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(patch("/api/rooms/" + roomId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"capacity\":0}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aTeacherCannotBeDeletedWhileStillAssignedToAClass() throws Exception {
+        String token = registerAndGetAccessToken("teacherdelete");
+        long teacherId = findFirst(listAsJson("/api/classes", token), c -> !c.get("teacherId").isNull())
+                .get("teacherId").asLong();
+
+        mockMvc.perform(delete("/api/teachers/" + teacherId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value(containsString("still assigned to")));
+
+        for (JsonNode c : listAsJson("/api/classes", token)) {
+            if (!c.get("teacherId").isNull() && c.get("teacherId").asLong() == teacherId) {
+                mockMvc.perform(delete("/api/classes/" + c.get("id").asLong()).header("Authorization", "Bearer " + token))
+                        .andExpect(status().isNoContent());
+            }
+        }
+
+        mockMvc.perform(delete("/api/teachers/" + teacherId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        assertThat(listAsJson("/api/teachers", token).size()).isEqualTo(5);
+    }
+
+    @Test
+    void aRoomCannotBeDeletedWhileAClassStillUsesIt() throws Exception {
+        String token = registerAndGetAccessToken("roomdelete");
+        long roomId = findFirst(listAsJson("/api/classes", token), c -> !c.get("roomId").isNull())
+                .get("roomId").asLong();
+
+        mockMvc.perform(delete("/api/rooms/" + roomId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value(containsString("still used by")));
+
+        for (JsonNode c : listAsJson("/api/classes", token)) {
+            if (!c.get("roomId").isNull() && c.get("roomId").asLong() == roomId) {
+                mockMvc.perform(delete("/api/classes/" + c.get("id").asLong()).header("Authorization", "Bearer " + token))
+                        .andExpect(status().isNoContent());
+            }
+        }
+
+        mockMvc.perform(delete("/api/rooms/" + roomId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        assertThat(listAsJson("/api/rooms", token).size()).isEqualTo(3);
+    }
+
+    @Test
+    void aSubjectCannotBeDeletedWhileClassesOrTeachersStillReferenceIt() throws Exception {
+        String token = registerAndGetAccessToken("subjectdelete");
+        long biologyId = findFirst(listAsJson("/api/subjects", token), s -> "Biology".equals(s.get("name").asText()))
+                .get("id").asLong();
+
+        mockMvc.perform(delete("/api/subjects/" + biologyId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value(containsString("1 class")));
+
+        long biologyClassId = findFirst(listAsJson("/api/classes", token), c -> c.get("subjectId").asLong() == biologyId)
+                .get("id").asLong();
+        mockMvc.perform(delete("/api/classes/" + biologyClassId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        // No class points at it any more, but Priya still lists it — that alone keeps blocking.
+        mockMvc.perform(delete("/api/subjects/" + biologyId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value(containsString("1 teacher")));
+
+        long priyaId = findFirst(listAsJson("/api/teachers", token), t -> "Priya Nair".equals(t.get("name").asText()))
+                .get("id").asLong();
+        long chemistryId = findFirst(listAsJson("/api/subjects", token), s -> "Chemistry".equals(s.get("name").asText()))
+                .get("id").asLong();
+        mockMvc.perform(patch("/api/teachers/" + priyaId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"subjectIds\":[%d]}".formatted(chemistryId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/subjects/" + biologyId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        assertThat(listAsJson("/api/subjects", token).size()).isEqualTo(5);
+    }
+
+    @Test
+    void institutionCannotDeleteOrRenameAnotherInstitutionsTeacher() throws Exception {
+        String tokenA = registerAndGetAccessToken("crudtenanta");
+        String tokenB = registerAndGetAccessToken("crudtenantb");
+        long teacherIdA = listAsJson("/api/teachers", tokenA).get(0).get("id").asLong();
+
+        mockMvc.perform(delete("/api/teachers/" + teacherIdA).header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(patch("/api/teachers/" + teacherIdA)
+                        .header("Authorization", "Bearer " + tokenB)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Hijacked\"}"))
+                .andExpect(status().isNotFound());
+
+        assertThat(listAsJson("/api/teachers", tokenA).size()).isEqualTo(6);
     }
 
     @Test

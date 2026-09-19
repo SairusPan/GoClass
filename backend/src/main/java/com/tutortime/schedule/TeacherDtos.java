@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
@@ -35,4 +36,14 @@ record CreateTeacherRequest(
         @Email String email,
         @NotEmpty List<Long> subjectIds,
         @NotEmpty List<@NotNull AvailabilityDto> availability) {
+}
+
+/** Partial update — a null field means "leave this one alone", matching AssignClassRequest. A
+ * non-null subjectIds/availability replaces the whole list rather than merging into it. */
+record UpdateTeacherRequest(
+        String name,
+        String phone,
+        @Email String email,
+        @Size(min = 1) List<Long> subjectIds,
+        @Size(min = 1) List<@NotNull AvailabilityDto> availability) {
 }
