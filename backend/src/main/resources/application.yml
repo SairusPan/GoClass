@@ -1,5 +1,7 @@
 server:
-  port: 8080
+  # Railway (and most PaaS) inject PORT and expect the process to listen on it.
+  # Local `mvn spring-boot:run` leaves PORT unset, so this stays 8080.
+  port: ${PORT:8080}
 
 spring:
   application:
@@ -9,9 +11,11 @@ spring:
   profiles:
     default: local
   datasource:
-    url: jdbc:mysql://localhost:3306/tutortime?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    # DB_URL wins when set (full JDBC string, including SSL). Otherwise compose from Railway's
+    # MYSQL* plugin vars, falling back to a local MySQL on 3306.
+    url: ${DB_URL:jdbc:mysql://${MYSQLHOST:localhost}:${MYSQLPORT:3306}/${MYSQLDATABASE:tutortime}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&createDatabaseIfNotExist=true}
+    username: ${DB_USERNAME:${MYSQLUSER:root}}
+    password: ${DB_PASSWORD:${MYSQLPASSWORD:}}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
@@ -24,7 +28,8 @@ spring:
 
 app:
   jwt:
-    # Override via the JWT_SECRET env var in every real deployment — this default is dev-only.
+    # This default is the public placeholder DeploymentSafety refuses to start with.
+    # Local dev overrides it in application-local.yml; a real deploy must set JWT_SECRET.
     secret: ${JWT_SECRET:dev-only-secret-change-me-before-shipping-anywhere-real-0123456789}
     access-token-expiry-minutes: ${JWT_ACCESS_EXPIRY_MINUTES:15}
     refresh-token-expiry-days: ${JWT_REFRESH_EXPIRY_DAYS:7}
@@ -32,7 +37,8 @@ app:
     # Blank by default — EmailService just logs instead of sending until this is set.
     resend-api-key: ${RESEND_API_KEY:}
     from-address: ${EMAIL_FROM_ADDRESS:GoClass <onboarding@resend.dev>}
-  # Used to build the link inside password-reset emails.
+  # Used to build the link inside password-reset emails. A hosted process (PORT or MYSQLHOST
+  # set) refuses to start if this is still the Vite default — see DeploymentSafety.
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
 
 cors:

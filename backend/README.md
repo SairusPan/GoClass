@@ -66,9 +66,14 @@ mvn spring-boot:run
 ```
 
 `application-local.yml` is gitignored — never commit real credentials. `application.yml` sets
-`spring.profiles.default: local`, so the local file loads automatically with no extra flags; a
-real deployment should set `SPRING_PROFILES_ACTIVE` (and `JWT_SECRET`, `DB_USERNAME`,
-`DB_PASSWORD` etc. as env vars) instead of relying on any committed file. Tables are created
+`spring.profiles.default: local`, so the local file loads automatically with no extra flags.
+
+A real deployment should set env vars rather than relying on any committed file. Two of them
+are enforced at startup (`DeploymentSafety`): `JWT_SECRET` must not be the public yaml
+placeholder and must be 32+ characters, and once `PORT` or `MYSQLHOST` is set (Railway does
+both) `FRONTEND_URL` must be the public origin, not `http://localhost:5173`. The process
+listens on `PORT` (8080 locally). Database coordinates come from Railway's `MYSQL*` plugin
+vars, or from `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` if you override them. Tables are created
 automatically (`ddl-auto: update`) — no manual migration step yet.
 
 ## API
@@ -148,7 +153,7 @@ Java. This backend's job is durable, tenant-isolated storage, not the algorithm.
 
 ## Tests
 
-`mvn test` runs 38 integration tests against an in-memory H2 database (no MySQL needed):
+`mvn test` runs 47 tests against an in-memory H2 database (no MySQL needed):
 
 - `AuthFlowIntegrationTest` — register/login/refresh-rotation/logout/duplicate-username/wrong-password,
   plus forgot-password (silent on unknown username), reset-password (rejects invalid/expired
@@ -161,7 +166,8 @@ Java. This backend's job is durable, tenant-isolated storage, not the algorithm.
   teacher continues to list it. Also covers the two class PATCH routes staying out of each
   other's way (renaming an `unscheduled` class leaves it unscheduled), cross-tenant `subjectId`
   rejection, cancelling a *rescheduled* leave putting the class back on its original day, start,
-  room and teacher, and notifications being unread by default and clearable per-tenant.
+- `DeploymentSafetyTest` — refuses to boot with the public JWT placeholder, a secret shorter
+  than 32 characters, or a hosted process still pointing `FRONTEND_URL` at Vite.
 
 ## Deploying
 

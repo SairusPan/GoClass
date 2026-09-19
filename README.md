@@ -39,7 +39,7 @@ npm install && npm run dev          # localhost:5173
 
 ```bash
 npm run test          # frontend: 40 Vitest tests
-cd backend && mvn test  # backend: 38 integration tests (H2, no MySQL needed)
+cd backend && mvn test  # backend: 47 tests (H2, no MySQL needed)
 ```
 
 Frontend tests split in two: `src/utils/scheduling.test.ts` covers the pure scheduling logic
@@ -59,12 +59,16 @@ back to `index.html` instead of 404ing — see `SpaFallbackController.java`.
 
 1. Push this repo to GitHub, connect it to a new Railway project (Railway auto-detects the
    `Dockerfile`).
-2. Add a MySQL plugin in Railway — it gives you `DB_USERNAME`/`DB_PASSWORD`/host/port as env vars.
-3. Set these env vars on the Railway service (see `backend/README.md` for what each does):
-   `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` (generate a fresh random one — don't reuse the dev
-   default), `RESEND_API_KEY`, `EMAIL_FROM_ADDRESS`, `FRONTEND_URL` (your Railway/custom domain,
-   once you have one), `CORS_ALLOWED_ORIGINS` (same domain — same-origin in production means this
-   mostly matters for anyone hitting the API directly, not the app itself).
+2. Add a MySQL plugin in Railway — it injects `MYSQLHOST` / `MYSQLPORT` / `MYSQLUSER` /
+   `MYSQLPASSWORD` / `MYSQLDATABASE`. The app reads those directly; you only need `DB_URL` if you
+   want to override the whole JDBC string (SSL, params, a non-Railway database).
+3. Set these env vars on the Railway service. The process **will not start** without a real
+   `JWT_SECRET` and a public `FRONTEND_URL` — the yaml defaults are localhost/placeholder values
+   that `DeploymentSafety` rejects once Railway has set `PORT`:
+   `JWT_SECRET` (random, 32+ characters — `openssl rand -base64 48`), `FRONTEND_URL` (your
+   `*.up.railway.app` URL or custom domain, no trailing slash), `RESEND_API_KEY`,
+   `EMAIL_FROM_ADDRESS`, `CORS_ALLOWED_ORIGINS` (same origin as `FRONTEND_URL` — same-origin in
+   production means this mostly matters for anyone hitting the API directly).
 4. Railway builds the Dockerfile and gives you a `*.up.railway.app` URL immediately — the app is
    live there before you own a domain. Add a custom domain later in Railway's dashboard whenever
    you buy one; Railway provisions HTTPS for it automatically.

@@ -5,7 +5,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.jwt")
 public class JwtProperties {
 
-    /** HMAC-SHA256 needs >= 256 bits — keep this at 32+ characters. Override via JWT_SECRET env var in any real deployment. */
+    /**
+     * HMAC-SHA256 needs >= 256 bits — keep this at 32+ characters. The yaml default is a
+     * public placeholder; {@link com.tutortime.config.DeploymentSafety} refuses to start with it.
+     */
     private String secret;
 
     private long accessTokenExpiryMinutes = 15;
