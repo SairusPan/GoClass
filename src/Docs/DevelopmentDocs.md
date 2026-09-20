@@ -1,13 +1,4 @@
-我确认过了：老师、科目、教室三个接口现在只能查和新增，没有修改和删除，只有课程能改能删。
-
-我的建议，按顺序做这三件，先别多做：
-
-老师/科目/教室的编辑和删除（最优先）。EliteSchool一上手就会输错名字、录错空闲时间、或者想删掉不用的教室，现在完全没办法。这是"能不能真用起来"的底线。要注意一点：删除时如果这个老师/教室还被课程用着，要提示或拦住，不然课程会变成空白。
-修掉Dashboard写死的"Term 3, Week 5"。5分钟的事，但客户一登录第一眼就看到，标题不对显得不靠谱。
-"这周停课"。在现有的每周例外机制上加个取消标记，成本低，补习班遇到假期/老师有事这种情况很常见。
-Excel批量导入和课表导出先不做。它们价值高，但工作量大，而且你还不知道EliteSchool到底需要什么格式（他们可能用Excel，也可能用别的）。等他们试用后你问一句"你们现在怎么排课、怎么导出"，再做更准。
-
-要我从第1、2项开始吗？做完我会照例把老师/教室各测一遍再给你。
+### Development Document for GoClass
 
 ## 19/09/26: Completing the CRUD of tutors, subjects and classroom apis
 ![Flow graph for backend:](/src/Docs/Img/CRUDSTCR.png)
@@ -15,3 +6,7 @@ Excel批量导入和课表导出先不做。它们价值高，但工作量大，
 
 ## General CRUD Notes:
 - Things related to general CRUD will share similar design to the flow diagram as 19/09/26 implementation
+
+## 20/09/26: Added basic CSV imports
+![Flow graph for backend](/src/Docs/Img/200926.png)
+- First version of csv import

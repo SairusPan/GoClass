@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useScheduling } from '../state/SchedulingContext'
+import { apiFetch, readError } from '../state/apiClient'
 import { Badge, Button, Card } from '../components/ui'
 import {
   DAYS,
@@ -22,8 +23,8 @@ export default function DataSetup() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Teachers &amp; setup data</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Enter your centre's teachers, subjects, rooms and classes. In a later version this will also support
-          importing from Excel.
+          Enter your centre's teachers, subjects, rooms and classes, or import a CSV saved from Excel
+          using the template on each tab. Importing does not schedule classes.
         </p>
       </div>
 
@@ -126,6 +127,7 @@ function TeachersTab() {
 
   return (
     <div className="space-y-4">
+      <CsvImportBar type="teachers" label="teachers" />
       <div className="flex items-center justify-between gap-3">
         <input
           value={search}
@@ -340,6 +342,7 @@ function SubjectsTab() {
 
   return (
     <div className="space-y-4">
+      <CsvImportBar type="subjects" label="subjects" />
       <Card className="flex flex-wrap items-end gap-2 p-4">
         <Field label={editingId ? 'Rename subject' : 'New subject name'}>
           <input
@@ -429,6 +432,7 @@ function RoomsTab() {
 
   return (
     <div className="space-y-4">
+      <CsvImportBar type="rooms" label="rooms" />
       <Card className="flex flex-wrap items-end gap-2 p-4">
         <Field label={editingId ? 'Edit room name' : 'Room name'}>
           <input
@@ -554,6 +558,7 @@ function ClassesTab() {
 
   return (
     <div className="space-y-4">
+      <CsvImportBar type="classes" label="classes" />
       <Card className="flex flex-wrap items-end gap-2 p-4">
         <Field label={editingId ? 'Edit class name' : 'Class name'}>
           <input
@@ -670,6 +675,69 @@ function ClassesTab() {
         )}
       </Card>
     </div>
+  )
+}
+
+function CsvImportBar({ type, label }: { type: Tab; label: string }) {
+  const { importCsv } = useScheduling()
+  const { error, clearError, run } = useActionError()
+  const [ok, setOk] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function downloadTemplate() {
+    setOk('')
+    return run(async () => {
+      const res = await apiFetch(`/api/import/${type}/template`)
+      if (!res.ok) throw new Error(await readError(res, 'Could not download the template.'))
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${type}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+  }
+
+  function pickFile() {
+    setOk('')
+    clearError()
+    inputRef.current?.click()
+  }
+
+  function onFile(file: File | undefined) {
+    if (!file) return
+    run(async () => {
+      const result = await importCsv(type, file)
+      setOk(`Imported ${result.imported} ${label}.`)
+    })
+  }
+
+  return (
+    <Card className="space-y-2 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="secondary" onClick={downloadTemplate}>
+          Download CSV template
+        </Button>
+        <Button variant="secondary" onClick={pickFile}>
+          Import {label} CSV
+        </Button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            onFile(file)
+          }}
+        />
+        <p className="text-xs text-slate-500">CSV only. All rows must be valid or nothing is imported.</p>
+      </div>
+      {error && <ErrorBanner message={error} onDismiss={clearError} />}
+      {ok && !error && <p className="text-sm text-emerald-700">{ok}</p>}
+    </Card>
   )
 }
 

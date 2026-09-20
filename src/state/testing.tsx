@@ -8,6 +8,7 @@ export interface RecordedCall {
   url: string
   method: string
   body: unknown
+  contentType: string | null
 }
 
 type Reply = { status?: number; json?: unknown }
@@ -23,8 +24,9 @@ export function mockFetch(routes: Record<string, Reply | ((body: unknown) => Rep
   vi.stubGlobal('fetch', async (input: string, init: RequestInit = {}) => {
     const url = String(input)
     const method = (init.method ?? 'GET').toUpperCase()
-    const body = init.body ? JSON.parse(String(init.body)) : undefined
-    calls.push({ url, method, body })
+    const body = parseRequestBody(init.body)
+    const contentType = new Headers(init.headers).get('Content-Type')
+    calls.push({ url, method, body, contentType })
 
     const path = url.replace(/^https?:\/\/[^/]+/, '')
     const route = routes[`${method} ${path}`]
@@ -41,6 +43,18 @@ export function mockFetch(routes: Record<string, Reply | ((body: unknown) => Rep
   })
 
   return calls
+}
+
+function parseRequestBody(raw: BodyInit | null | undefined): unknown {
+  if (raw == null || raw === '') return undefined
+  if (typeof FormData !== 'undefined' && raw instanceof FormData) {
+    const entries: Record<string, unknown> = {}
+    raw.forEach((value, key) => {
+      entries[key] = value
+    })
+    return entries
+  }
+  return JSON.parse(String(raw))
 }
 
 /** The single call made to `path`, asserted to exist so tests fail on the URL, not on undefined. */

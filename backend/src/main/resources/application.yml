@@ -17,6 +17,10 @@ spring:
     username: ${DB_USERNAME:${MYSQLUSER:root}}
     password: ${DB_PASSWORD:${MYSQLPASSWORD:}}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
   jpa:
     hibernate:
       ddl-auto: update

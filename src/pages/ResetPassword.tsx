@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../state/AuthContext'
-import { Button } from '../components/ui'
+import { BrandMark, Button } from '../components/ui'
 
 export default function ResetPassword({ token, onDone }: { token: string; onDone: () => void }) {
   const { resetPassword } = useAuth()
@@ -31,7 +31,7 @@ export default function ResetPassword({ token, onDone }: { token: string; onDone
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="text-xl font-semibold text-slate-900">GoClass</div>
+          <BrandMark size={88} stacked />
           <p className="mt-1 text-sm text-slate-500">Reset your password</p>
         </div>
 

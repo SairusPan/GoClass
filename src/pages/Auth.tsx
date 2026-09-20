@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useAuth } from '../state/AuthContext'
-import { Button } from '../components/ui'
+import { BrandMark, Button } from '../components/ui'
 
 type Mode = 'login' | 'signup' | 'forgot'
 
@@ -82,7 +82,7 @@ export default function Auth() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="text-xl font-semibold text-slate-900">GoClass</div>
+          <BrandMark size={88} stacked />
           <p className="mt-1 text-sm text-slate-500">Scheduling for Australian tutoring centres</p>
         </div>
 

@@ -8,7 +8,7 @@ import LeaveSubstitute from './pages/LeaveSubstitute'
 import AccountSettings from './pages/AccountSettings'
 import Auth from './pages/Auth'
 import ResetPassword from './pages/ResetPassword'
-import { Badge } from './components/ui'
+import { Badge, BrandMark } from './components/ui'
 
 type Page = 'dashboard' | 'data' | 'schedule' | 'leave' | 'account'
 
@@ -38,7 +38,7 @@ function Shell() {
     <div className="flex min-h-screen bg-slate-50">
       <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-5">
-          <div className="text-lg font-semibold text-slate-900">GoClass</div>
+          <BrandMark size={40} />
           <div className="text-xs text-slate-500">Scheduling for tutoring centres — demo build</div>
         </div>
         <nav className="flex-1 space-y-1 p-3">

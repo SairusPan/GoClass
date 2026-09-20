@@ -61,7 +61,9 @@ async function tryRefresh(): Promise<boolean> {
 export async function apiFetch(path: string, options: RequestInit = {}, allowRetry = true): Promise<Response> {
   const accessToken = getAccessToken()
   const headers = new Headers(options.headers)
-  if (!headers.has('Content-Type') && options.body) headers.set('Content-Type', 'application/json')
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers })

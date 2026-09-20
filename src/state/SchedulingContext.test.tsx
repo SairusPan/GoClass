@@ -168,3 +168,44 @@ describe('notifications', () => {
     expect(view.current().notifications).toHaveLength(1)
   })
 })
+
+describe('importCsv', () => {
+  it('posts FormData to /api/import/{type} without a JSON content-type, then reloads setup lists', async () => {
+    const imported = { id: 8, name: 'Chemistry' }
+    let saved = false
+    const { calls, view } = await mount({
+      'POST /api/import/subjects': () => {
+        saved = true
+        return { json: { type: 'subjects', imported: 1 } }
+      },
+      'GET /api/subjects': () => ({ json: saved ? [SUBJECT, imported] : [SUBJECT] }),
+    })
+    expect(view.current().subjects.map((s) => s.name)).toEqual(['Biology'])
+    const subjectGetsBefore = calls.filter((c) => c.method === 'GET' && c.url.endsWith('/api/subjects')).length
+
+    const file = new File(['name\nChemistry\n'], 'subjects.csv', { type: 'text/csv' })
+    let result: { imported: number } | undefined
+    await run(async () => {
+      result = await view.current().importCsv('subjects', file)
+    })
+
+    const call = callTo(calls, 'POST', '/api/import/subjects')
+    expect(call.contentType).toBeNull()
+    expect(call.body).toEqual({ file: expect.any(File) })
+    expect(result).toEqual({ imported: 1 })
+    expect(view.current().subjects.map((s) => s.name)).toEqual(['Biology', 'Chemistry'])
+    const subjectGetsAfter = calls.filter((c) => c.method === 'GET' && c.url.endsWith('/api/subjects')).length
+    expect(subjectGetsAfter).toBe(subjectGetsBefore + 1)
+  })
+
+  it('surfaces the backend message and leaves setup lists untouched', async () => {
+    const { view } = await mount({
+      'POST /api/import/subjects': { status: 400, json: { error: 'Row 2: subject "Biology" already exists.' } },
+    })
+
+    const file = new File(['name\nBiology\n'], 'subjects.csv', { type: 'text/csv' })
+    await expect(run(() => view.current().importCsv('subjects', file))).rejects.toThrow('already exists')
+    expect(view.current().subjects).toHaveLength(1)
+    expect(view.current().subjects[0].name).toBe('Biology')
+  })
+})

@@ -109,6 +109,13 @@ reset flow, so neither is accepted here.
 | POST | `/api/notifications/read-all` | returns the full list |
 | DELETE | `/api/notifications/{id}` | |
 | DELETE | `/api/notifications` | clears the caller's whole queue |
+| GET | `/api/import/{type}/template` | `{type}` is `subjects`, `rooms`, `teachers`, or `classes` |
+| POST | `/api/import/{type}` | multipart field `file` — CSV only, ≤1 MB / 500 rows |
+
+CSV import parses the file, then inserts through the existing create methods. A bad row
+rejects the whole file. Classes land as `unscheduled` — import does not pick a slot.
+Teachers look up subjects by name (`|`-separated); availability is
+`Mon 16:00-18:00;Tue 17:00-19:00`. Duplicate names in the same institution are refused.
 
 ### Why a class has two PATCH routes
 

@@ -50,6 +50,7 @@ interface SchedulingState {
     patch: { teacherId: string | null; roomId: string | null; day: Day; start: string; durationMinutes: number; status: ClassStatus },
   ) => Promise<ClassOverride>
   clearWeekOverride: (classId: string, weekStartDate: string) => Promise<void>
+  importCsv: (type: 'subjects' | 'rooms' | 'teachers' | 'classes', file: File) => Promise<{ imported: number }>
 }
 
 const SchedulingContext = createContext<SchedulingState | null>(null)
@@ -215,6 +216,30 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     }
     loadAll()
   }, [])
+
+  async function refreshSetup() {
+    const [t, s, r, c] = await Promise.all([
+      apiFetchJson<BackendTeacher[]>('/api/teachers'),
+      apiFetchJson<BackendSubject[]>('/api/subjects'),
+      apiFetchJson<BackendRoom[]>('/api/rooms'),
+      apiFetchJson<BackendClass[]>('/api/classes'),
+    ])
+    setTeachers(t.map(mapTeacher))
+    setSubjects(s.map(mapSubject))
+    setRooms(r.map(mapRoom))
+    setClasses(c.map(mapClass))
+  }
+
+  async function importCsv(type: 'subjects' | 'rooms' | 'teachers' | 'classes', file: File) {
+    const body = new FormData()
+    body.append('file', file)
+    const result = await apiFetchJson<{ imported: number; type: string }>(`/api/import/${type}`, {
+      method: 'POST',
+      body,
+    })
+    await refreshSetup()
+    return { imported: result.imported }
+  }
 
   async function refreshClasses() {
     const list = await apiFetchJson<BackendClass[]>('/api/classes')
@@ -504,6 +529,7 @@ export function SchedulingProvider({ children }: { children: ReactNode }) {
     fetchWeekOverrides,
     saveWeekOverride,
     clearWeekOverride,
+    importCsv,
   }
 
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>

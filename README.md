@@ -20,7 +20,7 @@ npm install && npm run dev          # localhost:5173
 
 **Frontend**
 - `src/pages/Dashboard.tsx` — overview + alerts
-- `src/pages/DataSetup.tsx` — enter teachers / subjects / rooms
+- `src/pages/DataSetup.tsx` — enter or CSV-import teachers / subjects / rooms / classes
 - `src/pages/ScheduleBoard.tsx` — generate scheduling suggestions, see
   conflicts highlighted on the weekly grid, manually adjust, publish
 - `src/pages/LeaveSubstitute.tsx` — mark a teacher away, find a substitute,
@@ -38,8 +38,8 @@ npm install && npm run dev          # localhost:5173
 ## Tests
 
 ```bash
-npm run test          # frontend: 40 Vitest tests
-cd backend && mvn test  # backend: 47 tests (H2, no MySQL needed)
+npm run test          # frontend: 42 Vitest tests
+cd backend && mvn test  # backend: 54 tests (H2, no MySQL needed)
 ```
 
 Frontend tests split in two: `src/utils/scheduling.test.ts` covers the pure scheduling logic
@@ -80,4 +80,4 @@ fine for now, worth revisiting before this holds real customer data).
 
 ## Not done yet
 
-Excel import/export, real SMS delivery, billing, DB migrations for schema changes.
+Excel `.xlsx` import, real SMS delivery, billing, DB migrations for schema changes.

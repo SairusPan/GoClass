@@ -61,3 +61,29 @@ export function Button({
     </button>
   )
 }
+
+export function BrandMark({ size = 36, stacked = false }: { size?: number; stacked?: boolean }) {
+  const mark = (
+    <img
+      src="/goclass-logo.png"
+      alt=""
+      width={size}
+      height={size}
+      className="shrink-0 object-contain"
+    />
+  )
+  if (stacked) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        {mark}
+        <div className="text-xl font-semibold text-slate-900">GoClass</div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2.5">
+      {mark}
+      <div className="text-lg font-semibold text-slate-900">GoClass</div>
+    </div>
+  )
+}
